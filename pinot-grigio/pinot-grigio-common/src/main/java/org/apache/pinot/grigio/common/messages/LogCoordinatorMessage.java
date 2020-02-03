@@ -18,6 +18,7 @@
  */
 package org.apache.pinot.grigio.common.messages;
 
+import java.io.Serializable;
 import java.util.Objects;
 
 /**
@@ -30,7 +31,7 @@ import java.util.Objects;
  * segment updater will use the segment name & offset to identify the location of the pinot record, and use the
  * updateEventType to decide which virtual column to update. And it will use value to update the corresponding column.
  */
-public class LogCoordinatorMessage {
+public class LogCoordinatorMessage implements Serializable {
   private final String _segmentName;
   private final long _value;
   private final LogEventType _updateEventType;

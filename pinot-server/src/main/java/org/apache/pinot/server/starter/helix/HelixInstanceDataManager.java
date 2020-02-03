@@ -19,18 +19,6 @@
 package org.apache.pinot.server.starter.helix;
 
 import com.google.common.base.Preconditions;
-import org.apache.pinot.core.segment.updater.UpsertWaterMarkManager;
-import java.io.File;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.locks.Lock;
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-import javax.annotation.concurrent.ThreadSafe;
 import org.apache.commons.configuration.Configuration;
 import org.apache.commons.configuration.ConfigurationException;
 import org.apache.commons.io.FileUtils;
@@ -52,8 +40,21 @@ import org.apache.pinot.core.indexsegment.immutable.ImmutableSegment;
 import org.apache.pinot.core.indexsegment.immutable.ImmutableSegmentLoader;
 import org.apache.pinot.core.segment.index.loader.IndexLoadingConfig;
 import org.apache.pinot.core.segment.index.loader.LoaderUtils;
+import org.apache.pinot.core.segment.updater.UpsertWaterMarkManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
+import javax.annotation.concurrent.ThreadSafe;
+import java.io.File;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.Lock;
 
 
 /**
@@ -133,6 +134,7 @@ public class HelixInstanceDataManager implements InstanceDataManager {
 
   private TableDataManager createTableDataManager(@Nonnull String tableNameWithType, @Nonnull TableConfig tableConfig) {
     LOGGER.info("Creating table data manager for table: {}", tableNameWithType);
+    LOGGER.info("debug to see {}", tableConfig.getUpdateSemantic());
     TableDataManagerConfig tableDataManagerConfig =
         TableDataManagerConfig.getDefaultHelixTableDataManagerConfig(_instanceDataManagerConfig, tableNameWithType);
     tableDataManagerConfig.overrideConfigs(tableConfig);

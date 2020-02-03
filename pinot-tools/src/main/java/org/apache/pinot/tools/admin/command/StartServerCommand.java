@@ -18,16 +18,19 @@
  */
 package org.apache.pinot.tools.admin.command;
 
-import java.io.File;
 import org.apache.commons.configuration.Configuration;
 import org.apache.commons.configuration.PropertiesConfiguration;
 import org.apache.pinot.common.utils.CommonConstants;
 import org.apache.pinot.common.utils.NetUtil;
+import org.apache.pinot.server.conf.ServerConf;
 import org.apache.pinot.server.starter.helix.HelixServerStarter;
 import org.apache.pinot.tools.Command;
 import org.kohsuke.args4j.Option;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.io.File;
+import java.util.concurrent.TimeUnit;
 
 
 /**
@@ -60,6 +63,9 @@ public class StartServerCommand extends AbstractBaseAdminCommand implements Comm
 
   @Option(name = "-configFileName", required = false, metaVar = "<Config File Name>", usage = "Broker Starter Config file.", forbids = {"-serverHost", "-serverPort", "-dataDir", "-segmentDir",})
   private String _configFileName;
+
+  @Option(name = "-enableUpsert", required = false, metaVar = "<Config File Name>", usage = "")
+  private String _enableUpsert;
 
   @Option(name = "-help", required = false, help = true, aliases = {"-h", "--h", "--help"}, usage = "Print this message.")
   private boolean _help = false;
@@ -104,6 +110,11 @@ public class StartServerCommand extends AbstractBaseAdminCommand implements Comm
     return this;
   }
 
+  public StartServerCommand setEnableUpsert(String enableUpsert) {
+    _enableUpsert = enableUpsert;
+    return this;
+  }
+
   @Override
   public String toString() {
     if (_configFileName != null) {
@@ -132,6 +143,35 @@ public class StartServerCommand extends AbstractBaseAdminCommand implements Comm
     return "Start the Pinot Server process at the specified port.";
   }
 
+  private void maybeAddUpsertConfigs(Configuration configuration) {
+    if ("true".equalsIgnoreCase(_enableUpsert)) {
+      LOGGER.info("enabling upsert and adding config");
+      configuration.addProperty(ServerConf.PINOT_SERVER_UPSERT_ENABLE, true);
+      // generate kc config for upsert components
+      configuration.addProperty("pinot.server.upsert.kc.producer.kafka.conf.bootstrap.servers", "localhost:19092");
+      configuration.addProperty("pinot.server.upsert.kc.producer.topic", "pinot-upsert-kc");
+      configuration.addProperty("pinot.server.upsert.kc.producer.kafka.conf.value.serializer", "org.apache.pinot.grigio.keyCoordinator.serialization.KCInDefaultSerializer");
+      configuration.addProperty("pinot.server.upsert.kc.producer.kafka.conf.partition.count", "1");
+      configuration.addProperty("pinot.server.upsert.kc.producer.class.name", "org.apache.pinot.grigio.common.rpcQueue.KeyCoordinatorQueueProducer");
+
+      // generate update log config for upsert components
+      configuration.addProperty("pinot.server.upsert.updaterProvider.consumer.kafka.conf.bootstrap.servers", "localhost:19092");
+      configuration.addProperty("pinot.server.upsert.updaterProvider.consumer.kafka.conf.value.deserializer", "org.apache.pinot.grigio.keyCoordinator.serialization.KCOutDefaultDeserializer");
+      configuration.addProperty("pinot.server.upsert.updaterProvider.consumer.kafka.conf.bootstrap.servers", "localhost:19092");
+      configuration.addProperty("pinot.server.upsert.updaterProvider.consumer.class.name", "org.apache.pinot.grigio.common.rpcQueue.SegmentUpdateQueueConsumer");
+
+      // updater config
+      configuration.addProperty("pinot.server.upsert.updater.input.topic.prefix", "pinot_upsert_");
+      // storage:
+      configuration.addProperty("pinot.server.upsert.storage.basePath", TMP_DIR + "serverVirtualColumn");
+
+      configuration.addProperty(ServerConf.PINOT_SERVER_HOSTNAME, _serverHost);
+    } else {
+      LOGGER.info("ignoring upsert config");
+    }
+
+  }
+
   @Override
   public boolean execute()
       throws Exception {
@@ -140,6 +180,7 @@ public class StartServerCommand extends AbstractBaseAdminCommand implements Comm
         _serverHost = NetUtil.getHostAddress();
       }
 
+      System.out.println("using server host name: " + _serverHost);
       Configuration configuration = readConfigFromFile(_configFileName);
       if (configuration == null) {
         if (_configFileName != null) {
@@ -154,6 +195,7 @@ public class StartServerCommand extends AbstractBaseAdminCommand implements Comm
         configuration.addProperty("pinot.server.instance.dataDir", _dataDir + _serverPort + "/index");
         configuration.addProperty("pinot.server.instance.segmentTarDir", _segmentDir + _serverPort + "/segmentTar");
       }
+      maybeAddUpsertConfigs(configuration);
 
       LOGGER.info("Executing command: " + toString());
       new HelixServerStarter(_clusterName, _zkAddress, configuration);
@@ -162,6 +204,8 @@ public class StartServerCommand extends AbstractBaseAdminCommand implements Comm
       return true;
     } catch (Exception e) {
       LOGGER.error("Caught exception while starting Pinot server, exiting.", e);
+      // sleep because we use async logger which need a bit more time to flush the logs
+      TimeUnit.SECONDS.sleep(2);
       System.exit(-1);
       return false;
     }

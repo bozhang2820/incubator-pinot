@@ -20,13 +20,6 @@ package org.apache.pinot.tools.streams;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.util.Properties;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import kafka.javaapi.producer.Producer;
 import kafka.producer.KeyedMessage;
 import kafka.producer.ProducerConfig;
@@ -41,6 +34,14 @@ import org.apache.pinot.core.realtime.impl.kafka.KafkaStarterUtils;
 import org.apache.pinot.tools.Quickstart;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.util.Properties;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 
 public class AirlineDataStream {
@@ -70,6 +71,11 @@ public class AirlineDataStream {
     service = Executors.newFixedThreadPool(1);
     Quickstart.printStatus(Quickstart.Color.YELLOW,
         "***** Offine data has max time as 16101, realtime will start consuming from time 16102 and increment time every 3000 events *****");
+  }
+
+  public AirlineDataStream setCurrentTimeValue(int currentTimeValue) {
+    this.currentTimeValue = currentTimeValue;
+    return this;
   }
 
   public void shutdown() {
@@ -133,6 +139,7 @@ public class AirlineDataStream {
               publish(message);
               counter++;
               if (counter % 3000 == 0) {
+                logger.info("sent 3000 records to kafka");
                 currentTimeValue = currentTimeValue + 1;
               }
             } catch (Exception e) {

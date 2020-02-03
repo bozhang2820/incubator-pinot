@@ -1201,6 +1201,7 @@
             <exclude>**/*.csv</exclude>
             <exclude>**/*.avro</exclude>
             <exclude>**/*.conf</exclude>
+            <exclude>**/*.properties</exclude>
             <exclude>**/appAssemblerScriptTemplate</exclude>
 
             <!-- Resource directories under test -->

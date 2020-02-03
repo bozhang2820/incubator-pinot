@@ -80,6 +80,10 @@ public class KeyCoordinatorConf extends PropertiesConfiguration {
   // metrics related config
   public static final String METRICS_CONFIG = "metrics";
 
+  // local integration testing config
+  // set this flag to be true so we can ensure all pinot component run within a single JVM
+  public static final String LOCAL_TESTING_MODE = "localtest.enable";
+
   public KeyCoordinatorConf(File file) throws ConfigurationException {
     super(file);
   }
@@ -167,5 +171,15 @@ public class KeyCoordinatorConf extends PropertiesConfiguration {
 
   public String getMetricsPrefix() {
     return getString(CommonConstants.Grigio.CONFIG_OF_METRICS_PREFIX_KEY, CommonConstants.Grigio.DEFAULT_METRICS_PREFIX);
+  }
+
+  // return true if we are configuring the current key coordinator to be ran as an component within JVM for test
+  // expect some component to have custom start up logic
+  public boolean isLocalTestingMode() {
+    try {
+      return getBoolean(LOCAL_TESTING_MODE, false);
+    } catch (Exception ex) {
+      return false;
+    }
   }
 }

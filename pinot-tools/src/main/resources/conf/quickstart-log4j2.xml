@@ -37,6 +37,11 @@
         <Pattern>%d{yyyy/MM/dd HH:mm:ss.SSS} %p [%c{1}] [%t] %m%n</Pattern>
       </PatternLayout>
     </RandomAccessFile>
+    <RandomAccessFile name="coordinatorLog" fileName="pinotCoordinator.log" immediateFlush="false">
+      <PatternLayout>
+        <Pattern>%d{yyyy/MM/dd HH:mm:ss.SSS} %p [%c{1}] [%t] %m%n</Pattern>
+      </PatternLayout>
+    </RandomAccessFile>
 
   </Appenders>
   <Loggers>
@@ -58,6 +63,11 @@
       <AppenderRef ref="brokerLog"/>
     </AsyncLogger>
 
+    <!-- Direct coordinator package log to the broker log file -->
+    <AsyncLogger name="org.apache.pinot.grigio" level="info" additivity="false">
+      <AppenderRef ref="coordinatorLog"/>
+    </AsyncLogger>
+
     <!-- Including server related package log to the server log file -->
     <AsyncLogger name="org.apache.pinot.server" level="info" additivity="false">
       <AppenderRef ref="serverLog"/>
@@ -66,6 +76,9 @@
       <AppenderRef ref="serverLog"/>
     </AsyncLogger>
     <AsyncLogger name="org.apache.pinot.core.realtime" level="info" additivity="false">
+      <AppenderRef ref="serverLog"/>
+    </AsyncLogger>
+    <AsyncLogger name="org.apache.pinot.core.data" level="info" additivity="false">
       <AppenderRef ref="serverLog"/>
     </AsyncLogger>
     <AsyncLogger name="org.apache.pinot.core.query" level="info" additivity="false">

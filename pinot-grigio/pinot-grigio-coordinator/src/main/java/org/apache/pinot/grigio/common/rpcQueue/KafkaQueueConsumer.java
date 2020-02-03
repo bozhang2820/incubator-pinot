@@ -116,7 +116,13 @@ public abstract class KafkaQueueConsumer<K, V> implements QueueConsumer<K, V> {
     long start = System.currentTimeMillis();
     List<QueueConsumerRecord<K, V>> msgList;
     if (getConsumer().assignment().size() == 0) {
+      getLogger().info("no assignment for consumer {}", getClass());
       msgList = ImmutableList.of();
+      try {
+        timeUnit.sleep(timeout);
+      } catch (InterruptedException e) {
+        // sleep for max sleep time when there is no assignment
+      }
     } else {
       ConsumerRecords<K, V> records = getConsumerRecords(timeout, timeUnit);
       msgList = new ArrayList<>(records.count());

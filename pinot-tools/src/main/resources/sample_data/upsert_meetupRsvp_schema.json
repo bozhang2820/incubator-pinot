@@ -1,0 +1,72 @@
+{
+  "metricFieldSpecs": [
+    {
+      "dataType": "INT",
+      "name": "rsvp_count"
+    }
+  ],
+  "dimensionFieldSpecs": [
+    {
+      "dataType": "STRING",
+      "name": "venue_name"
+    },
+    {
+      "dataType": "STRING",
+      "name": "event_name"
+    },
+    {
+      "dataType": "STRING",
+      "name": "event_id"
+    },
+    {
+      "dataType": "LONG",
+      "name": "event_time"
+    },
+    {
+      "dataType": "STRING",
+      "name": "group_city"
+    },
+    {
+      "dataType": "STRING",
+      "name": "group_country"
+    },
+    {
+      "dataType": "LONG",
+      "name": "group_id"
+    },
+    {
+      "dataType": "STRING",
+      "name": "group_name"
+    },
+    {
+      "name": "kafkaOffset",
+      "dataType": "LONG"
+    },
+    {
+      "name": "$validFrom",
+      "dataType": "LONG",
+      "virtualColumnProvider": "org.apache.pinot.core.segment.virtualcolumn.mutable.ValidFromInMemoryVirtualColumnProvider"
+    },
+    {
+      "name": "$validUntil",
+      "dataType": "LONG",
+      "virtualColumnProvider": "org.apache.pinot.core.segment.virtualcolumn.mutable.ValidUntilInMemoryVirtualColumnProvider"
+    },
+    {
+      "name": "$partition",
+      "dataType": "INT",
+      "virtualColumnProvider": "org.apache.pinot.core.segment.virtualcolumn.PartitionVirtualColumnProvider"
+    }
+  ],
+  "timeFieldSpec": {
+    "incomingGranularitySpec": {
+      "timeType": "MILLISECONDS",
+      "dataType": "LONG",
+      "name": "mtime"
+    }
+  },
+  "schemaName": "meetupRsvp",
+  "updateSemantic": "upsert",
+  "primaryKey": "event_id",
+  "offsetKey": "kafkaOffset"
+}

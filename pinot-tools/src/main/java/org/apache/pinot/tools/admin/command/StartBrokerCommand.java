@@ -18,7 +18,6 @@
  */
 package org.apache.pinot.tools.admin.command;
 
-import java.io.File;
 import org.apache.commons.configuration.BaseConfiguration;
 import org.apache.commons.configuration.Configuration;
 import org.apache.pinot.broker.broker.helix.HelixBrokerStarter;
@@ -27,6 +26,10 @@ import org.apache.pinot.tools.Command;
 import org.kohsuke.args4j.Option;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import java.io.File;
+
+import static org.apache.pinot.common.utils.CommonConstants.Broker.CONFIG_OF_BROKER_POLLING_SERVER_LWMS_SERVER_PORT;
 
 
 /**
@@ -119,6 +122,7 @@ public class StartBrokerCommand extends AbstractBaseAdminCommand implements Comm
 
         brokerConf = new BaseConfiguration();
         brokerConf.addProperty(CommonConstants.Helix.KEY_OF_BROKER_QUERY_PORT, _brokerPort);
+        brokerConf.addProperty(CONFIG_OF_BROKER_POLLING_SERVER_LWMS_SERVER_PORT, 7500);
       }
 
       LOGGER.info("Executing command: " + toString());

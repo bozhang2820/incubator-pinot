@@ -19,16 +19,18 @@
 package org.apache.pinot.tools.admin.command;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import java.io.File;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Random;
 import org.apache.commons.io.FileUtils;
 import org.apache.pinot.common.utils.CommonConstants.Helix.TableType;
 import org.apache.pinot.common.utils.JsonUtils;
 import org.apache.pinot.common.utils.TenantRole;
 import org.apache.pinot.tools.QuickstartTableRequest;
+
+import java.io.File;
+import java.io.IOException;
+import java.net.URL;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Random;
 
 
 public class QuickstartRunner {
@@ -49,6 +51,7 @@ public class QuickstartRunner {
   private final int _numControllers;
   private final File _tempDir;
   private final boolean _enableTenantIsolation;
+  private String _enableUpsert = "false";
 
   private final List<Integer> _brokerPorts = new ArrayList<>();
   private final List<Integer> _controllerPorts = new ArrayList<>();
@@ -106,11 +109,20 @@ public class QuickstartRunner {
     for (int i = 0; i < _numServers; i++) {
       StartServerCommand serverStarter = new StartServerCommand();
       serverStarter.setPort(DEFAULT_SERVER_NETTY_PORT + i).setAdminPort(DEFAULT_SERVER_ADMIN_API_PORT + i)
-          .setZkAddress(ZK_ADDRESS).setClusterName(CLUSTER_NAME)
+          .setZkAddress(ZK_ADDRESS).setClusterName(CLUSTER_NAME).setEnableUpsert(_enableUpsert)
           .setDataDir(new File(_tempDir, "PinotServerData" + i).getAbsolutePath())
           .setSegmentDir(new File(_tempDir, "PinotServerSegment" + i).getAbsolutePath());
       serverStarter.execute();
     }
+  }
+
+  private void startCoordinator() throws Exception {
+    StartCoordinatorCommand coordinatorStarter = new StartCoordinatorCommand();
+    URL resource = QuickstartRunner.class.getClassLoader().getResource("conf/upsert_quickstart_key_coordinator.properties");
+    File kcCongfile = new File(System.getProperty("java.io.tmpdir"), "kcConfig.properties");
+    FileUtils.copyURLToFile(resource, kcCongfile);
+    coordinatorStarter.setConfigFileName(kcCongfile.getPath()).setShouldCreateKafkaTopic(false);
+    coordinatorStarter.execute();
   }
 
   private void clean()
@@ -124,6 +136,15 @@ public class QuickstartRunner {
     startControllers();
     startBrokers();
     startServers();
+  }
+
+  public void startAllForUpsert() throws Exception {
+    _enableUpsert = "true";
+    startZookeeper();
+    startControllers();
+    startBrokers();
+    startServers();
+    startCoordinator();
   }
 
   public void stop()

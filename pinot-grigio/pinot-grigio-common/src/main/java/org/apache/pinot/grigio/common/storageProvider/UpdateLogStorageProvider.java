@@ -51,7 +51,7 @@ public class UpdateLogStorageProvider {
     if (_instance == null) {
       _instance = new UpdateLogStorageProvider(conf);
     } else {
-      throw new RuntimeException("validFrom storage has already been inited");
+      throw new RuntimeException("virtual column storage has already been inited");
     }
   }
 
@@ -65,6 +65,7 @@ public class UpdateLogStorageProvider {
   private UpdateLogStorageProvider(Configuration conf) {
     _conf = conf;
     final String basePath = conf.getString(BASE_PATH_CONF_KEY);
+    Preconditions.checkState(StringUtils.isNotEmpty(basePath), "update log storage path should not be empty");
     LOGGER.info("use base path {} for virtual column storage", basePath);
     if (StringUtils.isEmpty(basePath)) {
       throw new IllegalStateException("base path doesn't exists in config");
@@ -72,7 +73,12 @@ public class UpdateLogStorageProvider {
     _virtualColumnStorageDir = new File(basePath);
     if (!_virtualColumnStorageDir.exists()) {
       LOGGER.info("virtual column storage path {} doesn't exist, creating now", basePath);
-      _virtualColumnStorageDir.mkdirs();
+      try {
+        boolean result = _virtualColumnStorageDir.mkdirs();
+        Preconditions.checkState(result, "virtual column directory creation failed");
+      } catch(Exception ex) {
+        LOGGER.error("failed to create virtual column directory", ex);
+      }
     }
   }
 

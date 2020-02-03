@@ -20,7 +20,6 @@ package org.apache.pinot.server.conf;
 
 import org.apache.commons.configuration.Configuration;
 import org.apache.commons.configuration.ConfigurationException;
-import org.apache.pinot.common.metrics.ServerMetrics;
 import org.apache.pinot.common.utils.CommonConstants;
 
 
@@ -46,12 +45,12 @@ public class ServerConf {
   private static final String PINOT_QUERY_SCHEDULER_PREFIX = "pinot.query.scheduler";
 
   // upsert related config
-  private static final String PINOT_SERVER_UPSERT_KC_PROVIDER = "pinot.server.upsert.kc";
-  private static final String PINOT_SERVER_UPSERT_UPDATER = "pinot.server.upsert.updater";
-  private static final String PINOT_SERVER_UPSERT_UPDATE_PROVIDER = "pinot.server.upsert.updaterProvider";
-  private static final String PINOT_SERVER_UPSERT_ENABLE = "pinot.server.upsert.enabled";
-  private static final String PINOT_SERVER_UPSERT_STORAGE = "pinot.server.upsert.storage";
-  private static final String PINOT_SERVER_HOSTNAME = "pinot.hostname";
+  public static final String PINOT_SERVER_UPSERT_KC_PROVIDER = "pinot.server.upsert.kc";
+  public static final String PINOT_SERVER_UPSERT_UPDATER = "pinot.server.upsert.updater";
+  public static final String PINOT_SERVER_UPSERT_UPDATE_PROVIDER = "pinot.server.upsert.updaterProvider";
+  public static final String PINOT_SERVER_UPSERT_ENABLE = "pinot.server.upsert.enabled";
+  public static final String PINOT_SERVER_UPSERT_STORAGE = "pinot.server.upsert.storage";
+  public static final String PINOT_SERVER_HOSTNAME = "pinot.hostname";
 
   private Configuration _serverConf;
 

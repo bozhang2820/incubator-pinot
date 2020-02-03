@@ -18,6 +18,7 @@
  */
 package org.apache.pinot.grigio.keyCoordinator.starter;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.yammer.metrics.core.MetricsRegistry;
 import org.apache.commons.configuration.Configuration;
@@ -101,8 +102,9 @@ public class KeyCoordinatorStarter {
         conf.getKeyCoordinatorMessageTopic(),
         conf.getKeyCoordinatorMessagePartitionCount()
     );
-
-    UpdateLogStorageProvider.init(_keyCoordinatorConf.getStorageProviderConf());
+    if (!_keyCoordinatorConf.isLocalTestingMode()) {
+      UpdateLogStorageProvider.init(_keyCoordinatorConf.getStorageProviderConf());
+    }
     _keyCoordinatorPinotHelixSpectator = new KeyCoordinatorPinotHelixSpectator(
         _keyCoordinatorConf.getPinotClusterZkStr(), _keyCoordinatorConf.getPinotClusterName(), _instanceId);
     _retentionManager = new KCUpdateLogRetentionManagerImpl(
@@ -167,6 +169,15 @@ public class KeyCoordinatorStarter {
     LOGGER.info("finished shutdown consumer");
     _versionMessageProducer.close();
     LOGGER.info("finished shutdown version message producer");
+  }
+
+  @VisibleForTesting
+  /**
+   * method used by integration test to start the helix rebalance manually (instead of http /start endpoint)
+   * create so that we can start helix rebalance if we know exactly that after some point all server has been started
+   */
+  public void startManually() {
+    _keyCoordinatorClusterHelixManager.rebalance();
   }
 
   public boolean isRunning() {

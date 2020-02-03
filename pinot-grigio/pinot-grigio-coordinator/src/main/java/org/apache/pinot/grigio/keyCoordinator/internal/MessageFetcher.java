@@ -136,6 +136,7 @@ public class MessageFetcher {
           long offsetProcessed = _offsetManager.getOffsetProcessedFromPropertyStore(_partition);
           boolean isMaster = _mastershipManager.isParticipantMaster(_partition);
           boolean shouldRewind = false;
+          LOGGER.info("got {} messages from input topic", records.size());
           for (QueueConsumerRecord<byte[], KeyCoordinatorQueueMsg> record : records) {
             try {
               if (isMaster || record.getOffset() <= offsetProcessed) {

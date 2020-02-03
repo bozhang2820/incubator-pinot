@@ -31,6 +31,7 @@ public class HelixSetupUtils {
   public static synchronized HelixManager setup(String helixClusterName, String zkPath, String instanceId) {
     HelixManager helixManager;
     try {
+      LOGGER.info("connect or create helix cluster at {}/{}", zkPath, helixClusterName);
       createHelixClusterIfNeeded(helixClusterName, zkPath);
     } catch (final Exception ex) {
       LOGGER.error("failed to set up helix for key coordinator", ex);

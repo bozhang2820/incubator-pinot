@@ -91,10 +91,14 @@ public class ServerInstance {
     if (serverConf.isUpsertEnabled()) {
       LOGGER.info("starting pinot server upsert components");
       serverBuilder.initVirtualColumnStorageProvider();
+      LOGGER.info("started virtual storage provider");
       _keyCoordinatorProvider = serverBuilder.buildKeyCoordinatorProvider();
+      LOGGER.info("started keyCoordinator provider");
       _updaterProvider = serverBuilder.buildSegmentUpdaterProvider();
+      LOGGER.info("started updater provider");
       _retentionManager = new UpdateLogRetentionManagerImpl(
           new IdealStateHelper(helixManager.getClusterManagmentTool(), clusterName), instanceName);
+      LOGGER.info("started retention manage");
       _segmentUpdater = serverBuilder.buildSegmentUpdater(_updaterProvider, _retentionManager);
       _segmentDeletionHandler = new SegmentDeletionHandler(ImmutableList.of(_segmentUpdater));
     } else {
