@@ -26,6 +26,7 @@ import org.apache.helix.participant.statemachine.StateModelFactory;
 import org.apache.helix.participant.statemachine.StateModelInfo;
 import org.apache.helix.participant.statemachine.Transition;
 import org.apache.pinot.grigio.common.rpcQueue.KafkaQueueConsumer;
+import org.apache.pinot.grigio.keyCoordinator.internal.MessageConsumingManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -39,14 +40,14 @@ import org.slf4j.LoggerFactory;
 public class KeyCoordinatorMessageStateModelFactory extends StateModelFactory<StateModel> {
   private static final Logger LOGGER = LoggerFactory.getLogger(KeyCoordinatorMessageStateModelFactory.class);
 
-  private final KafkaQueueConsumer _keyCoordinatorQueueConsumer;
+  private final MessageConsumingManager _messageConsumingManager;
   private final String _keyCoordinatorMessageTopic;
 
   private static final String HELIX_PARTITION_SEPARATOR = "_";
 
-  public KeyCoordinatorMessageStateModelFactory(KafkaQueueConsumer keyCoordinatorQueueConsumer,
+  public KeyCoordinatorMessageStateModelFactory(MessageConsumingManager messageConsumingManager,
       String keyCoordinatorMessageTopic) {
-    _keyCoordinatorQueueConsumer = keyCoordinatorQueueConsumer;
+    _messageConsumingManager = messageConsumingManager;
     _keyCoordinatorMessageTopic = keyCoordinatorMessageTopic;
   }
 
@@ -69,14 +70,14 @@ public class KeyCoordinatorMessageStateModelFactory extends StateModelFactory<St
     @Transition(from = "OFFLINE", to = "ONLINE")
     public void onBecomeOnlineFromOffline(Message message, NotificationContext context) {
       LOGGER.info("Key coordinator message onBecomeOnlineFromOffline with partition: {}", _partitionName);
-      _keyCoordinatorQueueConsumer.subscribe(_keyCoordinatorMessageTopic,
+      _messageConsumingManager.subscribe(_keyCoordinatorMessageTopic,
           getKafkaPartitionNumberFromHelixPartition(_partitionName));
     }
 
     @Transition(from = "ONLINE", to = "OFFLINE")
     public void onBecomeOfflineFromOnline(Message message, NotificationContext context) {
       LOGGER.info("Key coordinator message onBecomeOfflineFromOnline with partition: {}", _partitionName);
-      _keyCoordinatorQueueConsumer.unsubscribe(_keyCoordinatorMessageTopic,
+      _messageConsumingManager.unsubscribe(_keyCoordinatorMessageTopic,
           getKafkaPartitionNumberFromHelixPartition(_partitionName));
     }
   }

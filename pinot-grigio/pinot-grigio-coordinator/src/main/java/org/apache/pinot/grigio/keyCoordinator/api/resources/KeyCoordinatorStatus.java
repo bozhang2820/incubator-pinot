@@ -53,7 +53,7 @@ public class KeyCoordinatorStatus {
   public String getKCStatus() {
     try {
       if (keyCoordinatorStarter != null && keyCoordinatorStarter.isRunning()) {
-        String result = keyCoordinatorStarter.getConsumer().getListOfSubscribedTopicPartitions()
+        String result = keyCoordinatorStarter.getMessageConsumingManager().getSubscribedTopicPartitions()
             .stream()
             .map(tp -> String.format("%s:%d", tp.topic(), tp.partition()))
             .collect(Collectors.joining(","));

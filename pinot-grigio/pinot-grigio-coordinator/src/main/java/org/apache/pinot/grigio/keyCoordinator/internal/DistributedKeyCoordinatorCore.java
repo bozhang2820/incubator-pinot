@@ -48,7 +48,7 @@ public class DistributedKeyCoordinatorCore {
 
   // sub manager for other stuff
   protected SegmentEventProcessor _segmentEventProcessor;
-  protected MessageFetcher _messageFetcher;
+  protected MessageConsumingManager _messageConsumingManager;
   protected VersionMessageManager _versionMessageManager;
 
   protected volatile State _state = State.SHUTDOWN;
@@ -56,14 +56,14 @@ public class DistributedKeyCoordinatorCore {
   public DistributedKeyCoordinatorCore() {}
 
   public void init(KeyCoordinatorConf conf, SegmentEventProcessor segmentEventProcessor,
-                   MessageFetcher fetcher, VersionMessageManager versionMessageManager,
+                   MessageConsumingManager messageConsumingManager, VersionMessageManager versionMessageManager,
                    GrigioKeyCoordinatorMetrics metrics) {
-    init(conf, Executors.newSingleThreadExecutor(), segmentEventProcessor, fetcher, versionMessageManager, metrics);
+    init(conf, Executors.newSingleThreadExecutor(), segmentEventProcessor, messageConsumingManager, versionMessageManager, metrics);
   }
 
   @VisibleForTesting
   public void init(KeyCoordinatorConf conf, ExecutorService coreThread, SegmentEventProcessor segmentEventProcessor,
-                   MessageFetcher fetcher, VersionMessageManager versionMessageManager,
+                   MessageConsumingManager messageConsumingManager, VersionMessageManager versionMessageManager,
                    GrigioKeyCoordinatorMetrics metrics) {
     CommonUtils.printConfiguration(conf, "distributed key coordinator core");
     Preconditions.checkState(_state == State.SHUTDOWN, "can only init if it is not running yet");
@@ -71,7 +71,7 @@ public class DistributedKeyCoordinatorCore {
     _messageProcessThread = coreThread;
     _versionMessageManager = versionMessageManager;
     _segmentEventProcessor = segmentEventProcessor;
-    _messageFetcher = fetcher;
+    _messageConsumingManager = messageConsumingManager;
     _metrics = metrics;
 
     _fetchMsgMaxDelayMs = conf.getInt(KeyCoordinatorConf.FETCH_MSG_MAX_DELAY_MS,
@@ -81,10 +81,9 @@ public class DistributedKeyCoordinatorCore {
   }
 
   public void start() {
-    Preconditions.checkState(_state == State.INIT, "key coordinate is not in correct state");
+    Preconditions.checkState(_state == State.INIT, "key coordinator core is not in correct state");
     LOGGER.info("starting key coordinator message process loop");
     _state = State.RUNNING;
-    _messageFetcher.start();
     _versionMessageManager.start();
     _segmentEventProcessor.start();
     _messageProcessThread.submit(this::messageProcessLoop);
@@ -97,8 +96,8 @@ public class DistributedKeyCoordinatorCore {
         LOGGER.info("starting new loop");
         long start = System.currentTimeMillis();
         // process message when we got max message count or reach max delay ms
-        MessageFetcher.MessageAndOffset<QueueConsumerRecord<byte[], KeyCoordinatorQueueMsg>> messageAndOffset =
-            _messageFetcher.getMessages(deadline);
+        MessageConsumingManager.MessageAndOffset<QueueConsumerRecord<byte[], KeyCoordinatorQueueMsg>> messageAndOffset =
+            _messageConsumingManager.getMessages(deadline);
         List<QueueConsumerRecord<byte[], KeyCoordinatorQueueMsg>> messages = messageAndOffset.getMessages();
         deadline = System.currentTimeMillis() + _fetchMsgMaxDelayMs;
 
@@ -108,7 +107,7 @@ public class DistributedKeyCoordinatorCore {
         if (messages.size() > 0) {
           _segmentEventProcessor.processMessages(messages);
           // todo: make ackOffset and setVersionConsumed as one transaction
-          _messageFetcher.ackOffset(messageAndOffset);
+          _messageConsumingManager.ackOffset(messageAndOffset.getOffsetInfo());
           _versionMessageManager.setVersionConsumedToPropertyStore();
           LOGGER.info("kc processed {} messages in this loop for {} ms", messages.size(),
               System.currentTimeMillis() - start);
@@ -127,7 +126,7 @@ public class DistributedKeyCoordinatorCore {
 
   public void stop() {
     _state = State.SHUTTING_DOWN;
-    _messageFetcher.stop();
+    _messageConsumingManager.stop();
     _versionMessageManager.stop();
     _segmentEventProcessor.stop();
     _messageProcessThread.shutdown();

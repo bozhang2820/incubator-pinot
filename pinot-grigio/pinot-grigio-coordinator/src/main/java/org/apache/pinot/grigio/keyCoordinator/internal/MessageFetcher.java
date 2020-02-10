@@ -32,17 +32,15 @@ import org.apache.pinot.grigio.keyCoordinator.starter.KeyCoordinatorConf;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 /**
- * class to handle fetching messages from the given input message queue and allow other components to get list of
- * messages from its internal buffer
+ * class to fetch messages from a specific partition of the key coordinator message topic and
+ * store in a shared queue using a separate thread
  */
 public class MessageFetcher {
   private static final Logger LOGGER = LoggerFactory.getLogger(MessageFetcher.class);
@@ -50,77 +48,55 @@ public class MessageFetcher {
 
   protected int _fetchMsgDelayMs;
   protected int _fetchMsgMaxDelayMs;
-  protected int _fetchMsgMaxCount;
 
   protected BlockingQueue<QueueConsumerRecord<byte[], KeyCoordinatorQueueMsg>> _consumerRecordBlockingQueue;
   protected KeyCoordinatorQueueConsumer _inputKafkaConsumer;
   protected GrigioKeyCoordinatorMetrics _metrics;
   protected ExecutorService _consumerThread;
+  protected String _topic;
+  protected Integer _partition;
 
   protected volatile State _state;
 
-  public MessageFetcher(KeyCoordinatorConf conf, KeyCoordinatorQueueConsumer consumer,
-                        GrigioKeyCoordinatorMetrics metrics) {
-    this(conf, consumer, Executors.newSingleThreadExecutor(), metrics);
+  public MessageFetcher(KeyCoordinatorConf conf,
+                        BlockingQueue<QueueConsumerRecord<byte[], KeyCoordinatorQueueMsg>> consumerRecordBlockingQueue,
+                        String topic, Integer partition,
+                        KeyCoordinatorQueueConsumer consumer, GrigioKeyCoordinatorMetrics metrics) {
+    this(conf, consumerRecordBlockingQueue, topic, partition, consumer, Executors.newSingleThreadExecutor(), metrics);
   }
 
   @VisibleForTesting
-  protected MessageFetcher(KeyCoordinatorConf conf, KeyCoordinatorQueueConsumer consumer,
-                        ExecutorService service, GrigioKeyCoordinatorMetrics metrics) {
+  protected MessageFetcher(KeyCoordinatorConf conf,
+                           BlockingQueue<QueueConsumerRecord<byte[], KeyCoordinatorQueueMsg>> consumerRecordBlockingQueue,
+                           String topic, Integer partition,
+                           KeyCoordinatorQueueConsumer consumer, ExecutorService service, GrigioKeyCoordinatorMetrics metrics) {
     _inputKafkaConsumer = consumer;
     _metrics = metrics;
     _consumerThread = service;
-    _consumerRecordBlockingQueue = new ArrayBlockingQueue<>(conf.getConsumerBlockingQueueSize());
+    _consumerRecordBlockingQueue = consumerRecordBlockingQueue;
+    _topic = topic;
+    _partition = partition;
 
     _fetchMsgDelayMs = conf.getInt(KeyCoordinatorConf.FETCH_MSG_DELAY_MS,
         KeyCoordinatorConf.FETCH_MSG_DELAY_MS_DEFAULT);
     _fetchMsgMaxDelayMs = conf.getInt(KeyCoordinatorConf.FETCH_MSG_MAX_DELAY_MS,
         KeyCoordinatorConf.FETCH_MSG_MAX_DELAY_MS_DEFAULT);
-    _fetchMsgMaxCount = conf.getInt(KeyCoordinatorConf.FETCH_MSG_MAX_BATCH_SIZE,
-        KeyCoordinatorConf.FETCH_MSG_MAX_BATCH_SIZE_DEFAULT);
 
     _state = State.INIT;
-    LOGGER.info("starting with fetch delay: {} max delay: {}, fetch max count: {}", _fetchMsgDelayMs, _fetchMsgMaxDelayMs,
-        _fetchMsgMaxCount);
+    LOGGER.info("starting with fetch delay: {} max delay: {}", _fetchMsgDelayMs, _fetchMsgMaxDelayMs);
   }
 
   public void start() {
-    Preconditions.checkState(_state == State.INIT, "key coordinate is not in correct state");
+    Preconditions.checkState(_state == State.INIT, "message fetcher is not in correct state");
     _state = State.RUNNING;
+    _inputKafkaConsumer.subscribe(_topic, _partition);
     _consumerThread.submit(this::consumerIngestLoop);
-
-  }
-
-  /**
-   * get a list of messages read by the consumer ingestion thread
-   * @param deadlineInMs linux epoch time we should stop the ingestion and return it to caller with the data we have so far
-   * @return list of messages to be processed
-  */
-  public MessageAndOffset<QueueConsumerRecord<byte[], KeyCoordinatorQueueMsg>> getMessages(long deadlineInMs) {
-    List<QueueConsumerRecord<byte[], KeyCoordinatorQueueMsg>> buffer = new ArrayList<>(_fetchMsgMaxCount);
-    while(System.currentTimeMillis() < deadlineInMs && buffer.size() < _fetchMsgMaxCount) {
-      _consumerRecordBlockingQueue.drainTo(buffer, _fetchMsgMaxCount - buffer.size());
-      if (buffer.size() < _fetchMsgMaxCount) {
-        Uninterruptibles.sleepUninterruptibly(_fetchMsgDelayMs, TimeUnit.MILLISECONDS);
-      }
-    }
-    OffsetInfo offsetInfo = new OffsetInfo();
-    for (QueueConsumerRecord<byte[], KeyCoordinatorQueueMsg> record: buffer) {
-      offsetInfo.updateOffsetIfNecessary(record);
-    }
-    return new MessageAndOffset<>(buffer, offsetInfo);
-  }
-
-  /**
-   * commit the current ingestion progress to internal offset storage
-   * @param messageAndOffset
-   */
-  public void ackOffset(MessageAndOffset messageAndOffset) {
-    _inputKafkaConsumer.ackOffset(messageAndOffset.getOffsetInfo());
   }
 
   public void stop() {
     _state = State.SHUTTING_DOWN;
+    _inputKafkaConsumer.unsubscribe(_topic, _partition);
+    _inputKafkaConsumer.close();
     _consumerThread.shutdown();
     try {
       _consumerThread.awaitTermination(TERMINATION_WAIT_MS, TimeUnit.MILLISECONDS);
@@ -128,6 +104,10 @@ public class MessageFetcher {
       LOGGER.error("failed to wait for key coordinator thread to shutdown", ex);
     }
     _consumerThread.shutdownNow();
+  }
+
+  public void ackOffset(OffsetInfo offsetInfo) {
+    _inputKafkaConsumer.ackOffset(offsetInfo);
   }
 
   private void consumerIngestLoop() {
@@ -156,31 +136,4 @@ public class MessageFetcher {
     }
     LOGGER.info("exiting consumer ingest loop");
   }
-
-  /**
-   * class wrap around the message and offset associated information
-   * @param <K>
-   */
-  public static class MessageAndOffset<K> {
-    private List<K> _messages;
-    private OffsetInfo _offsetInfo;
-
-    /**
-     * @param messages list of messages for the current batch
-     * @param offsetInfo the largest offset for each partition in current set of messages
-     */
-    public MessageAndOffset(List<K> messages, OffsetInfo offsetInfo) {
-      _messages = messages;
-      _offsetInfo  = offsetInfo;
-    }
-
-    public List<K> getMessages() {
-      return _messages;
-    }
-
-    public OffsetInfo getOffsetInfo() {
-      return _offsetInfo;
-    }
-  }
-
 }

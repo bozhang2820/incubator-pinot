@@ -39,7 +39,7 @@ import org.apache.pinot.grigio.keyCoordinator.helix.KeyCoordinatorClusterHelixMa
 import org.apache.pinot.grigio.keyCoordinator.helix.KeyCoordinatorPinotHelixSpectator;
 import org.apache.pinot.grigio.keyCoordinator.helix.State;
 import org.apache.pinot.grigio.keyCoordinator.internal.DistributedKeyCoordinatorCore;
-import org.apache.pinot.grigio.keyCoordinator.internal.MessageFetcher;
+import org.apache.pinot.grigio.keyCoordinator.internal.MessageConsumingManager;
 import org.apache.pinot.grigio.keyCoordinator.internal.SegmentEventProcessor;
 import org.apache.pinot.grigio.keyCoordinator.internal.VersionMessageManager;
 import org.slf4j.Logger;
@@ -53,7 +53,7 @@ public class KeyCoordinatorStarter {
 
   private KeyCoordinatorConf _keyCoordinatorConf;
   private GrigioKeyCoordinatorMetrics _metrics;
-  private KeyCoordinatorQueueConsumer _consumer;
+  private MessageConsumingManager _messageConsumingManager;
   private LogCoordinatorQueueProducer _producer;
   private VersionMsgQueueProducer _versionMessageProducer;
   private MessageResolveStrategy _messageResolveStrategy;
@@ -73,14 +73,18 @@ public class KeyCoordinatorStarter {
     Preconditions.checkState(StringUtils.isNotEmpty(_hostName), "expect host name in configuration");
     _port = conf.getPort();
     _instanceId = CommonConstants.Helix.PREFIX_OF_KEY_COORDINATOR_INSTANCE + _hostName + "_" + _port;
-    _consumer = getConsumer(_keyCoordinatorConf.getConsumerConf());
     _producer = getProducer(_keyCoordinatorConf.getProducerConf());
     _versionMessageProducer = getVersionMessageProducer(_keyCoordinatorConf.getVersionMessageProducerConf());
+
+    Configuration consumerConfig = _keyCoordinatorConf.getConsumerConf();
+    consumerConfig.setProperty(CommonConfig.RPC_QUEUE_CONFIG.HOSTNAME_KEY, _hostName);
+    _messageConsumingManager = new MessageConsumingManager(_keyCoordinatorConf, consumerConfig, _metrics);
+
     _keyCoordinatorClusterHelixManager = new KeyCoordinatorClusterHelixManager(
         _keyCoordinatorConf.getZkStr(),
         _keyCoordinatorConf.getKeyCoordinatorClusterName(),
         _instanceId,
-        _consumer,
+        _messageConsumingManager,
         conf.getKeyCoordinatorMessageTopic(),
         conf.getKeyCoordinatorMessagePartitionCount()
     );
@@ -129,18 +133,17 @@ public class KeyCoordinatorStarter {
     return _keyCoordinatorClusterHelixManager;
   }
 
-  public KeyCoordinatorQueueConsumer getConsumer() {
-    return _consumer;
+  public MessageConsumingManager getMessageConsumingManager() {
+    return _messageConsumingManager;
   }
 
   public void start() {
     LOGGER.info("starting key coordinator instance");
-    final MessageFetcher fetcher = new MessageFetcher(_keyCoordinatorConf, _consumer, _metrics);
     final VersionMessageManager versionMessageManager = new VersionMessageManager(_keyCoordinatorConf,
         _versionMessageProducer, _keyCoordinatorClusterHelixManager.getControllerHelixManager(), _metrics);
     final SegmentEventProcessor segmentEventProcessor = new SegmentEventProcessor(_keyCoordinatorConf, _producer,
         _messageResolveStrategy, _retentionManager, versionMessageManager, _metrics);
-    _keyCoordinatorCore.init(_keyCoordinatorConf, segmentEventProcessor, fetcher, versionMessageManager, _metrics);
+    _keyCoordinatorCore.init(_keyCoordinatorConf, segmentEventProcessor, _messageConsumingManager, versionMessageManager, _metrics);
     LOGGER.info("finished init key coordinator instance, starting loop");
     _keyCoordinatorCore.start();
     LOGGER.info("starting web service");
@@ -153,7 +156,6 @@ public class KeyCoordinatorStarter {
     LOGGER.info("finished shutdown key coordinator instance");
     _producer.close();
     LOGGER.info("finished shutdown producer");
-    _consumer.close();
     LOGGER.info("finished shutdown consumer");
     _versionMessageProducer.close();
     LOGGER.info("finished shutdown version message producer");
