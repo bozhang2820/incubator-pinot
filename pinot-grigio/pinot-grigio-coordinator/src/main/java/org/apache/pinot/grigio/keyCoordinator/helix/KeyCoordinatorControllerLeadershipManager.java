@@ -28,26 +28,26 @@ import org.slf4j.LoggerFactory;
  * Manager for leadership status of key coordinator controllers. This listens to leadership changes
  * and updates local cache for the leadership status.
  */
-public class KeyCoordinatorLeadershipManager {
-  private static final Logger LOGGER = LoggerFactory.getLogger(KeyCoordinatorLeadershipManager.class);
+public class KeyCoordinatorControllerLeadershipManager {
+  private static final Logger LOGGER = LoggerFactory.getLogger(KeyCoordinatorControllerLeadershipManager.class);
 
   private final HelixManager _controllerHelixManager;
 
-  private volatile boolean _isLeader = false;
+  private volatile boolean _isControllerLeader = false;
 
-  public KeyCoordinatorLeadershipManager(HelixManager controllerHelixManager) {
+  public KeyCoordinatorControllerLeadershipManager(HelixManager controllerHelixManager) {
     _controllerHelixManager = controllerHelixManager;
     _controllerHelixManager
         .addControllerListener((ControllerChangeListener) notificationContext -> onControllerChange());
   }
 
-  public synchronized boolean isLeader() {
-    return _isLeader;
+  public synchronized boolean isControllerLeader() {
+    return _isControllerLeader;
   }
 
   private synchronized void onControllerChange() {
-    boolean newIsLeader = _controllerHelixManager.isLeader();
-    LOGGER.info("Key coordinator controller isLeader status changed from {} to {}", _isLeader, newIsLeader);
-    _isLeader = newIsLeader;
+    boolean newIsControllerLeader = _controllerHelixManager.isLeader();
+    LOGGER.info("Key coordinator controller isControllerLeader status changed from {} to {}", _isControllerLeader, newIsControllerLeader);
+    _isControllerLeader = newIsControllerLeader;
   }
 }

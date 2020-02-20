@@ -21,12 +21,15 @@ package org.apache.pinot.grigio.keyCoordinator.internal;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import com.google.common.util.concurrent.Uninterruptibles;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.pinot.grigio.common.OffsetInfo;
 import org.apache.pinot.grigio.common.messages.KeyCoordinatorQueueMsg;
 import org.apache.pinot.grigio.common.metrics.GrigioGauge;
 import org.apache.pinot.grigio.common.rpcQueue.KeyCoordinatorQueueConsumer;
 import org.apache.pinot.grigio.common.rpcQueue.QueueConsumerRecord;
 import org.apache.pinot.grigio.keyCoordinator.GrigioKeyCoordinatorMetrics;
+import org.apache.pinot.grigio.keyCoordinator.helix.KeyCoordinatorMasterSlaveOffsetManager;
+import org.apache.pinot.grigio.keyCoordinator.helix.KeyCoordinatorParticipantMastershipManager;
 import org.apache.pinot.grigio.keyCoordinator.helix.State;
 import org.apache.pinot.grigio.keyCoordinator.starter.KeyCoordinatorConf;
 import org.slf4j.Logger;
@@ -53,22 +56,28 @@ public class MessageFetcher {
   protected KeyCoordinatorQueueConsumer _inputKafkaConsumer;
   protected GrigioKeyCoordinatorMetrics _metrics;
   protected ExecutorService _consumerThread;
+  protected KeyCoordinatorParticipantMastershipManager _mastershipManager;
   protected String _topic;
   protected Integer _partition;
+  protected KeyCoordinatorMasterSlaveOffsetManager _offsetManager;
 
   protected volatile State _state;
 
   public MessageFetcher(KeyCoordinatorConf conf,
                         BlockingQueue<QueueConsumerRecord<byte[], KeyCoordinatorQueueMsg>> consumerRecordBlockingQueue,
                         String topic, Integer partition,
+                        KeyCoordinatorParticipantMastershipManager mastershipManager,
+                        KeyCoordinatorMasterSlaveOffsetManager offsetManager,
                         KeyCoordinatorQueueConsumer consumer, GrigioKeyCoordinatorMetrics metrics) {
-    this(conf, consumerRecordBlockingQueue, topic, partition, consumer, Executors.newSingleThreadExecutor(), metrics);
+    this(conf, consumerRecordBlockingQueue, topic, partition, mastershipManager, offsetManager, consumer, Executors.newSingleThreadExecutor(), metrics);
   }
 
   @VisibleForTesting
   protected MessageFetcher(KeyCoordinatorConf conf,
                            BlockingQueue<QueueConsumerRecord<byte[], KeyCoordinatorQueueMsg>> consumerRecordBlockingQueue,
                            String topic, Integer partition,
+                           KeyCoordinatorParticipantMastershipManager mastershipManager,
+                           KeyCoordinatorMasterSlaveOffsetManager offsetManager,
                            KeyCoordinatorQueueConsumer consumer, ExecutorService service, GrigioKeyCoordinatorMetrics metrics) {
     _inputKafkaConsumer = consumer;
     _metrics = metrics;
@@ -76,6 +85,8 @@ public class MessageFetcher {
     _consumerRecordBlockingQueue = consumerRecordBlockingQueue;
     _topic = topic;
     _partition = partition;
+    _mastershipManager = mastershipManager;
+    _offsetManager = offsetManager;
 
     _fetchMsgDelayMs = conf.getInt(KeyCoordinatorConf.FETCH_MSG_DELAY_MS,
         KeyCoordinatorConf.FETCH_MSG_DELAY_MS_DEFAULT);
@@ -120,13 +131,23 @@ public class MessageFetcher {
           LOGGER.info("no message found in kafka consumer, sleep and wait for next batch");
           Uninterruptibles.sleepUninterruptibly(_fetchMsgDelayMs, TimeUnit.MILLISECONDS);
         } else {
-          records.forEach(c -> {
+          long offsetProcessed = _offsetManager.getOffsetProcessedFromPropertyStore(_partition);
+          boolean isMaster = _mastershipManager.isParticipantMaster(_partition);
+          boolean shouldRewind = false;
+          for (QueueConsumerRecord<byte[], KeyCoordinatorQueueMsg> record : records) {
             try {
-              _consumerRecordBlockingQueue.put(c);
+              if (isMaster || record.getOffset() <= offsetProcessed) {
+                _consumerRecordBlockingQueue.put(record);
+              } else {
+                shouldRewind = true;
+              }
             } catch (InterruptedException e) {
               LOGGER.warn("exception while trying to put message to queue", e);
             }
-          });
+          }
+          if (shouldRewind) {
+            _inputKafkaConsumer.seek(new TopicPartition(_topic, _partition), offsetProcessed + 1);
+          }
           _metrics.setValueOfGlobalGauge(GrigioGauge.KC_INPUT_MESSAGE_LAG_MS,
               System.currentTimeMillis() - records.get(records.size() - 1).getTimestamp());
         }

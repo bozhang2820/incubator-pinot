@@ -21,6 +21,8 @@ package org.apache.pinot.grigio.keyCoordinator.internal;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
 import org.apache.commons.configuration.Configuration;
+import org.apache.kafka.clients.consumer.OffsetAndMetadata;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.pinot.common.config.TableNameBuilder;
 import org.apache.pinot.common.utils.CommonConstants;
 import org.apache.pinot.grigio.common.DistributedCommonUtils;
@@ -44,6 +46,8 @@ import org.apache.pinot.grigio.common.storageProvider.retentionManager.UpdateLog
 import org.apache.pinot.grigio.common.storageProvider.retentionManager.UpdateLogTableRetentionManager;
 import org.apache.pinot.grigio.common.updateStrategy.MessageResolveStrategy;
 import org.apache.pinot.grigio.keyCoordinator.GrigioKeyCoordinatorMetrics;
+import org.apache.pinot.grigio.keyCoordinator.helix.KeyCoordinatorMasterSlaveOffsetManager;
+import org.apache.pinot.grigio.keyCoordinator.helix.KeyCoordinatorParticipantMastershipManager;
 import org.apache.pinot.grigio.keyCoordinator.helix.State;
 import org.apache.pinot.grigio.keyCoordinator.starter.KeyCoordinatorConf;
 import org.slf4j.Logger;
@@ -82,6 +86,8 @@ public class SegmentEventProcessor {
   protected UpdateLogRetentionManager _retentionManager;
   protected GrigioKeyCoordinatorMetrics _metrics;
   protected VersionMessageManager _versionMessageManager;
+  protected KeyCoordinatorParticipantMastershipManager _mastershipManager;
+  protected KeyCoordinatorMasterSlaveOffsetManager _masterSlaveOffsetManager;
 
   // config provided param
   protected String _topicPrefix;
@@ -93,12 +99,16 @@ public class SegmentEventProcessor {
                                MessageResolveStrategy messageResolveStrategy,
                                UpdateLogRetentionManager updateLogRetentionManager,
                                VersionMessageManager versionMessageManager,
+                               KeyCoordinatorParticipantMastershipManager mastershipManager,
+                               KeyCoordinatorMasterSlaveOffsetManager masterSlaveOffsetManager,
                                GrigioKeyCoordinatorMetrics metrics) {
     this(conf, keyCoordinatorProducer, messageResolveStrategy,
         getKeyValueStore(conf.subset(KeyCoordinatorConf.KEY_COORDINATOR_KV_STORE)),
         UpdateLogStorageProvider.getInstance(),
         updateLogRetentionManager,
         versionMessageManager,
+        mastershipManager,
+        masterSlaveOffsetManager,
         metrics);
   }
 
@@ -109,6 +119,8 @@ public class SegmentEventProcessor {
                                UpdateLogStorageProvider storageProvider,
                                UpdateLogRetentionManager updateLogRetentionManager,
                                VersionMessageManager versionMessageManager,
+                               KeyCoordinatorParticipantMastershipManager mastershipManager,
+                               KeyCoordinatorMasterSlaveOffsetManager masterSlaveOffsetManager,
                                GrigioKeyCoordinatorMetrics metrics) {
     _conf = conf;
     _outputKafkaProducer = keyCoordinatorProducer;
@@ -117,6 +129,8 @@ public class SegmentEventProcessor {
     _storageProvider = storageProvider;
     _retentionManager = updateLogRetentionManager;
     _versionMessageManager = versionMessageManager;
+    _mastershipManager = mastershipManager;
+    _masterSlaveOffsetManager = masterSlaveOffsetManager;
     _metrics = metrics;
     // get config
     _topicPrefix = conf.getTopicPrefix();
@@ -312,7 +326,11 @@ public class SegmentEventProcessor {
         countDownLatch.countDown();
       }
     }));
-    _outputKafkaProducer.batchProduce(tasks);
+    for (ProduceTask<Integer, LogCoordinatorMessage> task : tasks) {
+      if (_mastershipManager.isParticipantMaster(task.getKey())) {
+        _outputKafkaProducer.produce(task);
+      }
+    }
     _outputKafkaProducer.flush();
     try {
       countDownLatch.await(timeout, timeUnit);
@@ -333,6 +351,17 @@ public class SegmentEventProcessor {
     RocksDBKeyValueStoreDB keyValueStore = new RocksDBKeyValueStoreDB();
     keyValueStore.init(conf);
     return keyValueStore;
+  }
+
+  protected void updateProcessedOffset(Map<TopicPartition, OffsetAndMetadata> offsetMap) {
+    for (Map.Entry<TopicPartition, OffsetAndMetadata> entry : offsetMap.entrySet()) {
+      int partition = entry.getKey().partition();
+      if (_mastershipManager.isParticipantMaster(partition)) {
+        // master should update offset processed to property store
+        // offset in the input argument is the one to be committed, and the processed/consumed offset should be that -1
+        _masterSlaveOffsetManager.setOffsetProcessedToPropertyStore(partition, entry.getValue().offset() - 1);
+      }
+    }
   }
 
   /**

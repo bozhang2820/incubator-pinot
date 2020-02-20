@@ -22,11 +22,13 @@ import com.google.common.base.Preconditions;
 import com.yammer.metrics.core.MetricsRegistry;
 import org.apache.commons.configuration.Configuration;
 import org.apache.commons.lang.StringUtils;
+import org.apache.helix.HelixManager;
+import org.apache.helix.HelixManagerFactory;
+import org.apache.helix.InstanceType;
 import org.apache.pinot.common.metrics.MetricsHelper;
 import org.apache.pinot.common.utils.CommonConstants;
 import org.apache.pinot.grigio.common.utils.IdealStateHelper;
 import org.apache.pinot.grigio.common.config.CommonConfig;
-import org.apache.pinot.grigio.common.rpcQueue.KeyCoordinatorQueueConsumer;
 import org.apache.pinot.grigio.common.rpcQueue.LogCoordinatorQueueProducer;
 import org.apache.pinot.grigio.common.rpcQueue.VersionMsgQueueProducer;
 import org.apache.pinot.grigio.common.storageProvider.UpdateLogStorageProvider;
@@ -36,6 +38,8 @@ import org.apache.pinot.grigio.common.updateStrategy.MessageTimeResolveStrategy;
 import org.apache.pinot.grigio.keyCoordinator.GrigioKeyCoordinatorMetrics;
 import org.apache.pinot.grigio.keyCoordinator.api.KeyCoordinatorApiApplication;
 import org.apache.pinot.grigio.keyCoordinator.helix.KeyCoordinatorClusterHelixManager;
+import org.apache.pinot.grigio.keyCoordinator.helix.KeyCoordinatorMasterSlaveOffsetManager;
+import org.apache.pinot.grigio.keyCoordinator.helix.KeyCoordinatorParticipantMastershipManager;
 import org.apache.pinot.grigio.keyCoordinator.helix.KeyCoordinatorPinotHelixSpectator;
 import org.apache.pinot.grigio.keyCoordinator.helix.State;
 import org.apache.pinot.grigio.keyCoordinator.internal.DistributedKeyCoordinatorCore;
@@ -65,6 +69,8 @@ public class KeyCoordinatorStarter {
   private KCUpdateLogRetentionManagerImpl _retentionManager;
   private KeyCoordinatorClusterHelixManager _keyCoordinatorClusterHelixManager;
   private KeyCoordinatorPinotHelixSpectator _keyCoordinatorPinotHelixSpectator;
+  private KeyCoordinatorParticipantMastershipManager _mastershipManager;
+  private KeyCoordinatorMasterSlaveOffsetManager _offsetManager;
 
   public KeyCoordinatorStarter(KeyCoordinatorConf conf) throws Exception {
     _keyCoordinatorConf = conf;
@@ -75,19 +81,27 @@ public class KeyCoordinatorStarter {
     _instanceId = CommonConstants.Helix.PREFIX_OF_KEY_COORDINATOR_INSTANCE + _hostName + "_" + _port;
     _producer = getProducer(_keyCoordinatorConf.getProducerConf());
     _versionMessageProducer = getVersionMessageProducer(_keyCoordinatorConf.getVersionMessageProducerConf());
+    _mastershipManager = new KeyCoordinatorParticipantMastershipManager();
 
     Configuration consumerConfig = _keyCoordinatorConf.getConsumerConf();
     consumerConfig.setProperty(CommonConfig.RPC_QUEUE_CONFIG.HOSTNAME_KEY, _hostName);
-    _messageConsumingManager = new MessageConsumingManager(_keyCoordinatorConf, consumerConfig, _metrics);
+
+    HelixManager participantHelixManager = HelixManagerFactory
+        .getZKHelixManager(_keyCoordinatorConf.getKeyCoordinatorClusterName(), _instanceId, InstanceType.PARTICIPANT, _keyCoordinatorConf.getZkStr());
+    _offsetManager = new KeyCoordinatorMasterSlaveOffsetManager(participantHelixManager);
+    _messageConsumingManager = new MessageConsumingManager(_keyCoordinatorConf, consumerConfig, _mastershipManager, _offsetManager, _metrics);
 
     _keyCoordinatorClusterHelixManager = new KeyCoordinatorClusterHelixManager(
         _keyCoordinatorConf.getZkStr(),
         _keyCoordinatorConf.getKeyCoordinatorClusterName(),
         _instanceId,
         _messageConsumingManager,
+        _mastershipManager,
+        participantHelixManager,
         conf.getKeyCoordinatorMessageTopic(),
         conf.getKeyCoordinatorMessagePartitionCount()
     );
+
     UpdateLogStorageProvider.init(_keyCoordinatorConf.getStorageProviderConf());
     _keyCoordinatorPinotHelixSpectator = new KeyCoordinatorPinotHelixSpectator(
         _keyCoordinatorConf.getPinotClusterZkStr(), _keyCoordinatorConf.getPinotClusterName(), _instanceId);
@@ -106,13 +120,6 @@ public class KeyCoordinatorStarter {
     MetricsHelper.registerMetricsRegistry(registry);
     _metrics = new GrigioKeyCoordinatorMetrics(prefix, registry);
     _metrics.initializeGlobalMeters();
-  }
-
-  private KeyCoordinatorQueueConsumer getConsumer(Configuration consumerConfig) {
-    consumerConfig.setProperty(CommonConfig.RPC_QUEUE_CONFIG.HOSTNAME_KEY, _hostName);
-    KeyCoordinatorQueueConsumer consumer = new KeyCoordinatorQueueConsumer();
-    consumer.init(consumerConfig, _metrics);
-    return consumer;
   }
 
   private LogCoordinatorQueueProducer getProducer(Configuration producerConfig) {
@@ -142,8 +149,9 @@ public class KeyCoordinatorStarter {
     final VersionMessageManager versionMessageManager = new VersionMessageManager(_keyCoordinatorConf,
         _versionMessageProducer, _keyCoordinatorClusterHelixManager.getControllerHelixManager(), _metrics);
     final SegmentEventProcessor segmentEventProcessor = new SegmentEventProcessor(_keyCoordinatorConf, _producer,
-        _messageResolveStrategy, _retentionManager, versionMessageManager, _metrics);
-    _keyCoordinatorCore.init(_keyCoordinatorConf, segmentEventProcessor, _messageConsumingManager, versionMessageManager, _metrics);
+        _messageResolveStrategy, _retentionManager, versionMessageManager, _mastershipManager, _offsetManager, _metrics);
+    _keyCoordinatorCore.init(_keyCoordinatorConf, segmentEventProcessor, _messageConsumingManager,
+        versionMessageManager, _metrics);
     LOGGER.info("finished init key coordinator instance, starting loop");
     _keyCoordinatorCore.start();
     LOGGER.info("starting web service");

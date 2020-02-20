@@ -69,7 +69,7 @@ public class MessageConsumingManagerTest {
       consumerRecords.drainTo(result);
       return result;
     });
-    messageConsumingManager = new MessageConsumingManager(conf, null, consumerRecords, mockMetrics);
+    messageConsumingManager = new MessageConsumingManager(conf, null, consumerRecords, null, mockMetrics);
     msgList = ImmutableList.of(
         new QueueConsumerRecord<>("topic1", 1, 123, new byte[]{123},
             new KeyCoordinatorQueueMsg(new byte[]{123}, "segment1", 456, 900), 123),

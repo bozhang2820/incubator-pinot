@@ -34,30 +34,33 @@ import org.slf4j.LoggerFactory;
 /**
  * State model for key coordinator to handle:
  * 1. start of the key coordinator cluster (initial assignment of key coordinator message segments)
- * 2. todo: fail over of a key coordinator instance
+ * 2. fail over of a key coordinator instance
  */
 
 public class KeyCoordinatorMessageStateModelFactory extends StateModelFactory<StateModel> {
   private static final Logger LOGGER = LoggerFactory.getLogger(KeyCoordinatorMessageStateModelFactory.class);
 
   private final MessageConsumingManager _messageConsumingManager;
+  private final KeyCoordinatorParticipantMastershipManager _mastershipManager;
   private final String _keyCoordinatorMessageTopic;
 
   private static final String HELIX_PARTITION_SEPARATOR = "_";
 
   public KeyCoordinatorMessageStateModelFactory(MessageConsumingManager messageConsumingManager,
-      String keyCoordinatorMessageTopic) {
+                                                KeyCoordinatorParticipantMastershipManager mastershipManager,
+                                                String keyCoordinatorMessageTopic) {
     _messageConsumingManager = messageConsumingManager;
+    _mastershipManager = mastershipManager;
     _keyCoordinatorMessageTopic = keyCoordinatorMessageTopic;
   }
 
   @Override
   public StateModel createNewStateModel(String resourceName, String partitionName) {
-    LOGGER.info("creating new state model with resource {} and partition {}", resourceName, partitionName);
+    LOGGER.info("Creating new state model with resource {} and partition {}", resourceName, partitionName);
     return new KeyCoordinatorMessageStateModel(partitionName);
   }
 
-  @StateModelInfo(states = "{'OFFLINE', 'ONLINE'}", initialState = "OFFLINE")
+  @StateModelInfo(states = "{'MASTER', 'SLAVE', 'OFFLINE', 'DROPPED'}", initialState = "OFFLINE")
   public class KeyCoordinatorMessageStateModel extends StateModel {
 
     private final String _partitionName;
@@ -67,18 +70,37 @@ public class KeyCoordinatorMessageStateModelFactory extends StateModelFactory<St
       _partitionName = partitionName;
     }
 
-    @Transition(from = "OFFLINE", to = "ONLINE")
-    public void onBecomeOnlineFromOffline(Message message, NotificationContext context) {
-      LOGGER.info("Key coordinator message onBecomeOnlineFromOffline with partition: {}", _partitionName);
-      _messageConsumingManager.subscribe(_keyCoordinatorMessageTopic,
-          getKafkaPartitionNumberFromHelixPartition(_partitionName));
+    @Transition(from = "SLAVE", to = "MASTER")
+    public void onBecomeMasterFromSlave(Message message, NotificationContext context) {
+      LOGGER.info("Key coordinator message onBecomeMasterFromSlave with partition: {}", _partitionName);
+      _mastershipManager
+          .setParticipantMaster(getKafkaPartitionNumberFromHelixPartition(_partitionName), true);
     }
 
-    @Transition(from = "ONLINE", to = "OFFLINE")
-    public void onBecomeOfflineFromOnline(Message message, NotificationContext context) {
-      LOGGER.info("Key coordinator message onBecomeOfflineFromOnline with partition: {}", _partitionName);
-      _messageConsumingManager.unsubscribe(_keyCoordinatorMessageTopic,
-          getKafkaPartitionNumberFromHelixPartition(_partitionName));
+    @Transition(from = "MASTER", to = "SLAVE")
+    public void onBecomeSlaveFromMaster(Message message, NotificationContext context) {
+      LOGGER.info("Key coordinator message onBecomeSlaveFromMaster with partition: {}", _partitionName);
+      _mastershipManager
+          .setParticipantMaster(getKafkaPartitionNumberFromHelixPartition(_partitionName), false);
+    }
+
+    @Transition(from = "OFFLINE", to = "SLAVE")
+    public void onBecomeSlaveFromOffline(Message message, NotificationContext context) {
+      LOGGER.info("Key coordinator message onBecomeSlaveFromOffline with partition: {}", _partitionName);
+      _messageConsumingManager
+          .subscribe(_keyCoordinatorMessageTopic, getKafkaPartitionNumberFromHelixPartition(_partitionName));
+    }
+
+    @Transition(from = "SLAVE", to = "OFFLINE")
+    public void onBecomeOfflineFromSlave(Message message, NotificationContext context) {
+      LOGGER.info("Key coordinator message onBecomeOfflineFromSlave with partition: {}", _partitionName);
+      _messageConsumingManager
+          .unsubscribe(_keyCoordinatorMessageTopic, getKafkaPartitionNumberFromHelixPartition(_partitionName));
+    }
+
+    @Transition(from = "OFFLINE", to = "DROPPED")
+    public void onBecomeDroppedFromOffline(Message message, NotificationContext context) {
+      LOGGER.info("Key coordinator message onBecomeDroppedFromOffline with partition: {}", _partitionName);
     }
   }
 
@@ -86,7 +108,7 @@ public class KeyCoordinatorMessageStateModelFactory extends StateModelFactory<St
    * parse this string to get the correct numeric value for partition
    * @return the numeric value of this partition
    */
-  protected int getKafkaPartitionNumberFromHelixPartition(String helixPartition) {
+  private int getKafkaPartitionNumberFromHelixPartition(String helixPartition) {
     String[] partitionNameComponents = helixPartition.split(HELIX_PARTITION_SEPARATOR);
     Preconditions.checkState(partitionNameComponents.length > 1,
         "partition name should have more than 1 parts: " + helixPartition);

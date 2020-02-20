@@ -152,6 +152,10 @@ public abstract class KafkaQueueConsumer<K, V> implements QueueConsumer<K, V> {
     getMetrics().addTimedValueMs(GrigioTimer.COMMIT_OFFSET_LAG, System.currentTimeMillis() - start);
   }
 
+  public synchronized void seek(TopicPartition topicPartition, long offset) {
+    getConsumer().seek(topicPartition, offset);
+  }
+
   public void close() {
     getConsumer().close();
   }

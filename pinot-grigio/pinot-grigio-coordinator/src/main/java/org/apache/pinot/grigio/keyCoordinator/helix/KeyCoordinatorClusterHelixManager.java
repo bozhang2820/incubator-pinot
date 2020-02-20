@@ -25,9 +25,8 @@ import org.apache.helix.HelixManagerFactory;
 import org.apache.helix.InstanceType;
 import org.apache.helix.model.IdealState;
 import org.apache.helix.model.InstanceConfig;
-import org.apache.helix.model.OnlineOfflineSMD;
+import org.apache.helix.model.MasterSlaveSMD;
 import org.apache.pinot.common.utils.CommonConstants;
-import org.apache.pinot.grigio.common.rpcQueue.KeyCoordinatorQueueConsumer;
 import org.apache.pinot.grigio.keyCoordinator.api.KeyCoordinatorInstance;
 import org.apache.pinot.grigio.keyCoordinator.internal.MessageConsumingManager;
 import org.slf4j.Logger;
@@ -45,6 +44,7 @@ public class KeyCoordinatorClusterHelixManager {
 
   private final String _helixZkURL;
   private final String _keyCoordinatorClusterName;
+  private final String _keyCoordinatorMessageResourceName;
   private final String _keyCoordinatorId;
   private final HelixManager _controllerHelixManager;
   private final HelixManager _participantHelixManager;
@@ -52,20 +52,23 @@ public class KeyCoordinatorClusterHelixManager {
 
   public KeyCoordinatorClusterHelixManager(@Nonnull String zkURL, @Nonnull String keyCoordinatorClusterName,
                                            @Nonnull String keyCoordinatorId, @Nonnull MessageConsumingManager messageConsumingManager,
+                                           @Nonnull KeyCoordinatorParticipantMastershipManager mastershipManager,
+                                           @Nonnull HelixManager participantHelixManager,
                                            @Nonnull String keyCoordinatorMessageTopic, int keyCoordinatorMessagePartitionCount)
       throws Exception {
     _helixZkURL = zkURL;
     _keyCoordinatorClusterName = keyCoordinatorClusterName;
+    _keyCoordinatorMessageResourceName = CommonConstants.Helix.KEY_COORDINATOR_MESSAGE_RESOURCE_NAME;
     _keyCoordinatorId = keyCoordinatorId;
 
     _controllerHelixManager = HelixSetupUtils.setup(_keyCoordinatorClusterName, _helixZkURL, _keyCoordinatorId);
     _helixAdmin = _controllerHelixManager.getClusterManagmentTool();
 
     IdealState keyCoordinatorMessageResourceIdealState = _helixAdmin
-        .getResourceIdealState(_keyCoordinatorClusterName, CommonConstants.Helix.KEY_COORDINATOR_MESSAGE_RESOURCE_NAME);
+        .getResourceIdealState(_keyCoordinatorClusterName, _keyCoordinatorMessageResourceName);
     if (keyCoordinatorMessageResourceIdealState == null) {
-      _helixAdmin.addResource(_keyCoordinatorClusterName, CommonConstants.Helix.KEY_COORDINATOR_MESSAGE_RESOURCE_NAME,
-          keyCoordinatorMessagePartitionCount, OnlineOfflineSMD.name, IdealState.RebalanceMode.CUSTOMIZED.name());
+      _helixAdmin.addResource(_keyCoordinatorClusterName, _keyCoordinatorMessageResourceName,
+          keyCoordinatorMessagePartitionCount, MasterSlaveSMD.name, IdealState.RebalanceMode.CUSTOMIZED.name());
     }
 
     try {
@@ -75,10 +78,9 @@ public class KeyCoordinatorClusterHelixManager {
           _keyCoordinatorClusterName);
     }
 
-    _participantHelixManager = HelixManagerFactory
-        .getZKHelixManager(_keyCoordinatorClusterName, _keyCoordinatorId, InstanceType.PARTICIPANT, _helixZkURL);
-    _participantHelixManager.getStateMachineEngine().registerStateModelFactory(OnlineOfflineSMD.name,
-        new KeyCoordinatorMessageStateModelFactory(messageConsumingManager, keyCoordinatorMessageTopic));
+    _participantHelixManager = participantHelixManager;
+    _participantHelixManager.getStateMachineEngine().registerStateModelFactory(MasterSlaveSMD.name,
+        new KeyCoordinatorMessageStateModelFactory(messageConsumingManager, mastershipManager, keyCoordinatorMessageTopic));
     _participantHelixManager.connect();
   }
 
@@ -99,7 +101,7 @@ public class KeyCoordinatorClusterHelixManager {
   }
 
   public void rebalance() {
-    _helixAdmin.rebalance(_keyCoordinatorClusterName, CommonConstants.Helix.KEY_COORDINATOR_MESSAGE_RESOURCE_NAME,
+    _helixAdmin.rebalance(_keyCoordinatorClusterName, _keyCoordinatorMessageResourceName,
         CommonConstants.Helix.KEY_COORDINATOR_MESSAGE_RESOURCE_REPLICA_COUNT);
   }
 }

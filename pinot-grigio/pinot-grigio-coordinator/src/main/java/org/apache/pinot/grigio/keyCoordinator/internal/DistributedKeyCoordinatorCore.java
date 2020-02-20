@@ -109,6 +109,7 @@ public class DistributedKeyCoordinatorCore {
           // todo: make ackOffset and setVersionConsumed as one transaction
           _messageConsumingManager.ackOffset(messageAndOffset.getOffsetInfo());
           _versionMessageManager.setVersionConsumedToPropertyStore();
+          _segmentEventProcessor.updateProcessedOffset(messageAndOffset.getOffsetInfo().getOffsetMap());
           LOGGER.info("kc processed {} messages in this loop for {} ms", messages.size(),
               System.currentTimeMillis() - start);
         } else {
@@ -126,7 +127,7 @@ public class DistributedKeyCoordinatorCore {
 
   public void stop() {
     _state = State.SHUTTING_DOWN;
-    _messageConsumingManager.stop();
+    _messageConsumingManager.stopFetchers();
     _versionMessageManager.stop();
     _segmentEventProcessor.stop();
     _messageProcessThread.shutdown();

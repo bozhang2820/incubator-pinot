@@ -27,7 +27,7 @@ import org.apache.pinot.grigio.common.metrics.GrigioTimer;
 import org.apache.pinot.grigio.common.rpcQueue.ProduceTask;
 import org.apache.pinot.grigio.common.rpcQueue.VersionMsgQueueProducer;
 import org.apache.pinot.grigio.keyCoordinator.GrigioKeyCoordinatorMetrics;
-import org.apache.pinot.grigio.keyCoordinator.helix.KeyCoordinatorLeadershipManager;
+import org.apache.pinot.grigio.keyCoordinator.helix.KeyCoordinatorControllerLeadershipManager;
 import org.apache.pinot.grigio.keyCoordinator.helix.KeyCoordinatorVersionManager;
 import org.apache.pinot.grigio.keyCoordinator.helix.State;
 import org.apache.pinot.grigio.keyCoordinator.starter.KeyCoordinatorConf;
@@ -51,7 +51,7 @@ public class VersionMessageManager {
   protected TimerTask _versionMessageProduceTask;
   protected VersionMsgQueueProducer _versionMessageKafkaProducer;
   protected KeyCoordinatorVersionManager _keyCoordinatorVersionManager;
-  protected KeyCoordinatorLeadershipManager _keyCoordinatorLeadershipManager;
+  protected KeyCoordinatorControllerLeadershipManager _keyCoordinatorControllerLeadershipManager;
   protected GrigioKeyCoordinatorMetrics _metrics;
   protected long _versionMessageIntervalMs;
   protected Map<Integer, Long> _currentVersionConsumed;
@@ -64,19 +64,19 @@ public class VersionMessageManager {
         versionMsgQueueProducer,
         new Timer(),
         new KeyCoordinatorVersionManager(controllerHelixManager),
-        new KeyCoordinatorLeadershipManager(controllerHelixManager),
+        new KeyCoordinatorControllerLeadershipManager(controllerHelixManager),
         metrics);
   }
 
   @VisibleForTesting
   public VersionMessageManager(KeyCoordinatorConf conf, VersionMsgQueueProducer versionProducer,
                                Timer versionMessageTimer, KeyCoordinatorVersionManager versionManager,
-                               KeyCoordinatorLeadershipManager leadershipManager, GrigioKeyCoordinatorMetrics metrics) {
+                               KeyCoordinatorControllerLeadershipManager leadershipManager, GrigioKeyCoordinatorMetrics metrics) {
     _conf = conf;
     _versionMessageTimer = versionMessageTimer;
     _versionMessageKafkaProducer = versionProducer;
     _keyCoordinatorVersionManager = versionManager;
-    _keyCoordinatorLeadershipManager = leadershipManager;
+    _keyCoordinatorControllerLeadershipManager = leadershipManager;
     _metrics = metrics;
     _versionMessageProduceTask = new TimerTask() {
       @Override
@@ -106,7 +106,7 @@ public class VersionMessageManager {
       LOGGER.info("Key coordinator not running, skip producing version messages");
       return;
     }
-    if (!_keyCoordinatorLeadershipManager.isLeader()) {
+    if (!_keyCoordinatorControllerLeadershipManager.isControllerLeader()) {
       LOGGER.debug("Not controller leader, skip producing version messages");
       return;
     }

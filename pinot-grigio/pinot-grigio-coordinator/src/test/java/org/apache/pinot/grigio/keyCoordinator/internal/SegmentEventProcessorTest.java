@@ -37,6 +37,7 @@ import org.apache.pinot.grigio.common.storageProvider.retentionManager.UpdateLog
 import org.apache.pinot.grigio.common.updateStrategy.MessageResolveStrategy;
 import org.apache.pinot.grigio.common.updateStrategy.MessageTimeResolveStrategy;
 import org.apache.pinot.grigio.keyCoordinator.GrigioKeyCoordinatorMetrics;
+import org.apache.pinot.grigio.keyCoordinator.helix.KeyCoordinatorParticipantMastershipManager;
 import org.apache.pinot.grigio.keyCoordinator.starter.KeyCoordinatorConf;
 import org.testng.Assert;
 import org.testng.annotations.BeforeMethod;
@@ -68,6 +69,7 @@ public class SegmentEventProcessorTest {
   private UpdateLogStorageProvider mockStorageProvider;
   private UpdateLogRetentionManager mockRetentionManager;
   private VersionMessageManager mockVersionManager;
+  private KeyCoordinatorParticipantMastershipManager mockMastershipManager;
   private GrigioKeyCoordinatorMetrics mockMetrics;
 
   private Map<String, List<ProduceTask>> capturedTasks;
@@ -86,6 +88,7 @@ public class SegmentEventProcessorTest {
     mockStorageProvider = mock(UpdateLogStorageProvider.class);
     mockRetentionManager = mock(UpdateLogRetentionManager.class);
     mockVersionManager = mock(VersionMessageManager.class);
+    mockMastershipManager = mock(KeyCoordinatorParticipantMastershipManager.class);
     mockMetrics = mock(GrigioKeyCoordinatorMetrics.class);
 
     // inner mock for retentionManager
@@ -128,8 +131,10 @@ public class SegmentEventProcessorTest {
       return null;
     }).when(mockProducer).batchProduce(anyList());
 
+    when(mockMastershipManager.isParticipantMaster(anyInt())).thenReturn(true);
+
     processor = new SegmentEventProcessor(conf, mockProducer, messageResolveStrategy, mockDB, mockStorageProvider,
-        mockRetentionManager, mockVersionManager, mockMetrics);
+        mockRetentionManager, mockVersionManager, mockMastershipManager, mockMetrics);
   }
 
   @Test

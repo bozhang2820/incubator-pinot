@@ -28,7 +28,8 @@ import org.apache.pinot.grigio.common.messages.KeyCoordinatorQueueMsg;
 import org.apache.pinot.grigio.common.rpcQueue.KeyCoordinatorQueueConsumer;
 import org.apache.pinot.grigio.common.rpcQueue.QueueConsumerRecord;
 import org.apache.pinot.grigio.keyCoordinator.GrigioKeyCoordinatorMetrics;
-import org.apache.pinot.grigio.keyCoordinator.helix.State;
+import org.apache.pinot.grigio.keyCoordinator.helix.KeyCoordinatorMasterSlaveOffsetManager;
+import org.apache.pinot.grigio.keyCoordinator.helix.KeyCoordinatorParticipantMastershipManager;
 import org.apache.pinot.grigio.keyCoordinator.starter.KeyCoordinatorConf;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -52,20 +53,28 @@ public class MessageConsumingManager {
   protected Configuration _consumerConfig;
   protected BlockingQueue<QueueConsumerRecord<byte[], KeyCoordinatorQueueMsg>> _consumerRecordBlockingQueue;
   protected Map<TopicPartition, MessageFetcher> _messageFetcherMap;
+  protected KeyCoordinatorParticipantMastershipManager _mastershipManager;
+  protected KeyCoordinatorMasterSlaveOffsetManager _offsetManager;
   protected GrigioKeyCoordinatorMetrics _metrics;
 
   public MessageConsumingManager(KeyCoordinatorConf conf, Configuration consumerConfig,
+                                 KeyCoordinatorParticipantMastershipManager mastershipManager,
+                                 KeyCoordinatorMasterSlaveOffsetManager offsetManager,
                                  GrigioKeyCoordinatorMetrics metrics) {
-    this(conf, consumerConfig, new ArrayBlockingQueue<>(conf.getConsumerBlockingQueueSize()), metrics);
+    this(conf, consumerConfig, new ArrayBlockingQueue<>(conf.getConsumerBlockingQueueSize()), mastershipManager, offsetManager, metrics);
   }
 
   @VisibleForTesting
   protected MessageConsumingManager(KeyCoordinatorConf conf, Configuration consumerConfig,
                                     BlockingQueue<QueueConsumerRecord<byte[], KeyCoordinatorQueueMsg>> consumerRecordBlockingQueue,
+                                    KeyCoordinatorParticipantMastershipManager mastershipManager,
+                                    KeyCoordinatorMasterSlaveOffsetManager offsetManager,
                                     GrigioKeyCoordinatorMetrics metrics) {
     _conf = conf;
     _consumerConfig = consumerConfig;
     _messageFetcherMap = new HashMap<>();
+    _mastershipManager = mastershipManager;
+    _offsetManager = offsetManager;
 
     _metrics = metrics;
     _consumerRecordBlockingQueue = consumerRecordBlockingQueue;
@@ -88,7 +97,7 @@ public class MessageConsumingManager {
     if (!_messageFetcherMap.containsKey(topicPartition)) {
       KeyCoordinatorQueueConsumer consumer = newConsumer(_consumerConfig);
       MessageFetcher messageFetcher =
-          new MessageFetcher(_conf, _consumerRecordBlockingQueue, topic, partition, consumer, _metrics);
+          new MessageFetcher(_conf, _consumerRecordBlockingQueue, topic, partition, _mastershipManager, _offsetManager, consumer, _metrics);
       messageFetcher.start();
       _messageFetcherMap.put(topicPartition, messageFetcher);
     } else {
@@ -100,7 +109,7 @@ public class MessageConsumingManager {
   protected void subscribe(String topic, Integer partition, KeyCoordinatorQueueConsumer consumer) {
     TopicPartition topicPartition = new TopicPartition(topic, partition);
     MessageFetcher messageFetcher =
-        new MessageFetcher(_conf, _consumerRecordBlockingQueue, topic, partition, consumer, _metrics);
+        new MessageFetcher(_conf, _consumerRecordBlockingQueue, topic, partition, _mastershipManager, _offsetManager, consumer, _metrics);
     messageFetcher.start();
     _messageFetcherMap.put(topicPartition, messageFetcher);
   }
@@ -165,7 +174,7 @@ public class MessageConsumingManager {
     messageFetcher.ackOffset(offsetInfo);
   }
 
-  public void stop() {
+  public void stopFetchers() {
     for (MessageFetcher messageFetcher : _messageFetcherMap.values()) {
       messageFetcher.stop();
     }
@@ -196,5 +205,4 @@ public class MessageConsumingManager {
       return _offsetInfo;
     }
   }
-
 }

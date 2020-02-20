@@ -21,7 +21,7 @@ package org.apache.pinot.grigio.keyCoordinator.internal;
 import com.google.common.collect.ImmutableMap;
 import org.apache.pinot.grigio.common.rpcQueue.VersionMsgQueueProducer;
 import org.apache.pinot.grigio.keyCoordinator.GrigioKeyCoordinatorMetrics;
-import org.apache.pinot.grigio.keyCoordinator.helix.KeyCoordinatorLeadershipManager;
+import org.apache.pinot.grigio.keyCoordinator.helix.KeyCoordinatorControllerLeadershipManager;
 import org.apache.pinot.grigio.keyCoordinator.helix.KeyCoordinatorVersionManager;
 import org.apache.pinot.grigio.keyCoordinator.starter.KeyCoordinatorConf;
 import org.testng.Assert;
@@ -38,7 +38,7 @@ public class VersionMessageManagerTest {
 
   private VersionMsgQueueProducer mockProducer;
   private KeyCoordinatorVersionManager mockVersionManager;
-  private KeyCoordinatorLeadershipManager mockLeadershipManager;
+  private KeyCoordinatorControllerLeadershipManager mockLeadershipManager;
   private GrigioKeyCoordinatorMetrics mockMetrics;
 
   private VersionMessageManager versionMessageManager;
@@ -47,7 +47,7 @@ public class VersionMessageManagerTest {
   public void init() {
     mockProducer = mock(VersionMsgQueueProducer.class);
     mockVersionManager = mock(KeyCoordinatorVersionManager.class);
-    mockLeadershipManager = mock(KeyCoordinatorLeadershipManager.class);
+    mockLeadershipManager = mock(KeyCoordinatorControllerLeadershipManager.class);
     mockMetrics = mock(GrigioKeyCoordinatorMetrics.class);
 
     KeyCoordinatorConf conf = new KeyCoordinatorConf();
