@@ -37,6 +37,9 @@ public class KeyCoordinatorConf extends PropertiesConfiguration {
   public static final String FETCH_MSG_MAX_DELAY_MS = "kc.queue.fetch.delay.max.ms";
   public static final int FETCH_MSG_MAX_DELAY_MS_DEFAULT = 5000;
 
+  public static final String FETCH_MSG_WAIT_MS = "kc.queue.fetch.wait.ms";
+  public static final int FETCH_MSG_WAIT_MS_DEFAULT = 10000;
+
   public static final String FETCH_MSG_MAX_BATCH_SIZE = "kc.queue.fetch.size";
   public static final int FETCH_MSG_MAX_BATCH_SIZE_DEFAULT = 10000;
 

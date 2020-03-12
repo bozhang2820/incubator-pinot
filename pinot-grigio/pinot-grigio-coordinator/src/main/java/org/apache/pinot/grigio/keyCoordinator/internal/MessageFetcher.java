@@ -51,6 +51,7 @@ public class MessageFetcher {
 
   protected int _fetchMsgDelayMs;
   protected int _fetchMsgMaxDelayMs;
+  protected int _fetchMsgWaitMs;
 
   protected BlockingQueue<QueueConsumerRecord<byte[], KeyCoordinatorQueueMsg>> _consumerRecordBlockingQueue;
   protected KeyCoordinatorQueueConsumer _inputKafkaConsumer;
@@ -92,6 +93,7 @@ public class MessageFetcher {
         KeyCoordinatorConf.FETCH_MSG_DELAY_MS_DEFAULT);
     _fetchMsgMaxDelayMs = conf.getInt(KeyCoordinatorConf.FETCH_MSG_MAX_DELAY_MS,
         KeyCoordinatorConf.FETCH_MSG_MAX_DELAY_MS_DEFAULT);
+    _fetchMsgWaitMs = conf.getInt(KeyCoordinatorConf.FETCH_MSG_WAIT_MS, KeyCoordinatorConf.FETCH_MSG_WAIT_MS_DEFAULT);
 
     _state = State.INIT;
     LOGGER.info("starting with fetch delay: {} max delay: {}", _fetchMsgDelayMs, _fetchMsgMaxDelayMs);
@@ -147,6 +149,7 @@ public class MessageFetcher {
           }
           if (shouldRewind) {
             _inputKafkaConsumer.seek(new TopicPartition(_topic, _partition), offsetProcessed + 1);
+            Uninterruptibles.sleepUninterruptibly(_fetchMsgWaitMs, TimeUnit.MILLISECONDS);
           }
           _metrics.setValueOfGlobalGauge(GrigioGauge.KC_INPUT_MESSAGE_LAG_MS,
               System.currentTimeMillis() - records.get(records.size() - 1).getTimestamp());

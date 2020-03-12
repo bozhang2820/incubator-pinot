@@ -20,6 +20,7 @@ package org.apache.pinot.grigio.keyCoordinator.internal;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import org.apache.kafka.clients.consumer.OffsetAndMetadata;
 import org.apache.kafka.common.TopicPartition;
 import org.apache.pinot.grigio.common.OffsetInfo;
@@ -27,19 +28,24 @@ import org.apache.pinot.grigio.common.messages.KeyCoordinatorQueueMsg;
 import org.apache.pinot.grigio.common.rpcQueue.KeyCoordinatorQueueConsumer;
 import org.apache.pinot.grigio.common.rpcQueue.QueueConsumerRecord;
 import org.apache.pinot.grigio.keyCoordinator.GrigioKeyCoordinatorMetrics;
+import org.apache.pinot.grigio.keyCoordinator.helix.KeyCoordinatorMasterSlaveOffsetManager;
+import org.apache.pinot.grigio.keyCoordinator.helix.KeyCoordinatorParticipantMastershipManager;
 import org.apache.pinot.grigio.keyCoordinator.starter.KeyCoordinatorConf;
 import org.testng.Assert;
+import org.testng.annotations.AfterMethod;
 import org.testng.annotations.BeforeMethod;
 import org.testng.annotations.Test;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -49,9 +55,12 @@ import static org.mockito.internal.verification.VerificationModeFactory.times;
 public class MessageConsumingManagerTest {
 
   private MessageConsumingManager messageConsumingManager;
+  private KeyCoordinatorMasterSlaveOffsetManager mockOffsetManager;
+  private KeyCoordinatorParticipantMastershipManager mockMastershipManager;
   private KeyCoordinatorQueueConsumer mockConsumer;
   private GrigioKeyCoordinatorMetrics mockMetrics;
   private BlockingQueue<QueueConsumerRecord<byte[], KeyCoordinatorQueueMsg>> consumerRecords;
+  private BlockingQueue<QueueConsumerRecord<byte[], KeyCoordinatorQueueMsg>> blockingQueue;
   private List<QueueConsumerRecord<byte[], KeyCoordinatorQueueMsg>> msgList;
   private int invocationCount;
 
@@ -62,6 +71,7 @@ public class MessageConsumingManagerTest {
     mockConsumer = mock(KeyCoordinatorQueueConsumer.class);
     mockMetrics = mock(GrigioKeyCoordinatorMetrics.class);
     consumerRecords = new ArrayBlockingQueue<>(100);
+    blockingQueue = new ArrayBlockingQueue<>(100);
     invocationCount = 0;
     when(mockConsumer.getRequests(anyLong(), any())).thenAnswer((invocationOnMock) -> {
       invocationCount++;
@@ -69,17 +79,34 @@ public class MessageConsumingManagerTest {
       consumerRecords.drainTo(result);
       return result;
     });
-    messageConsumingManager = new MessageConsumingManager(conf, null, consumerRecords, null, mockMetrics);
+    mockOffsetManager = mock(KeyCoordinatorMasterSlaveOffsetManager.class);
+    when(mockOffsetManager.getOffsetProcessedFromPropertyStore(anyInt())).thenReturn(160L);
+    mockMastershipManager = mock(KeyCoordinatorParticipantMastershipManager.class);
+    when(mockMastershipManager.isParticipantMaster(anyInt())).thenReturn(false);
+    messageConsumingManager = new MessageConsumingManager(conf, null, blockingQueue,
+            mockMastershipManager, mockOffsetManager, mockMetrics);
     msgList = ImmutableList.of(
         new QueueConsumerRecord<>("topic1", 1, 123, new byte[]{123},
             new KeyCoordinatorQueueMsg(new byte[]{123}, "segment1", 456, 900), 123),
         new QueueConsumerRecord<>("topic1", 2, 156, new byte[]{123},
-            new KeyCoordinatorQueueMsg(new byte[]{123}, "segment2", 456, 901),123),
+            new KeyCoordinatorQueueMsg(new byte[]{123}, "segment2", 456, 901), 123),
         new QueueConsumerRecord<>("topic1", 1, 140, new byte[]{123},
-            new KeyCoordinatorQueueMsg(new byte[]{123}, "segment1", 470, 901), 123));
+            new KeyCoordinatorQueueMsg(new byte[]{123}, "segment1", 470, 901), 123),
+        new QueueConsumerRecord<>("topic1", 2, 161, new byte[]{123},
+            new KeyCoordinatorQueueMsg(new byte[]{123}, "segment2", 457, 902), 123)
+    );
     msgList.forEach(consumerRecords::offer);
     messageConsumingManager.subscribe("topic1", 1, mockConsumer);
     messageConsumingManager.subscribe("topic1", 2, mockConsumer);
+  }
+
+  @Test
+  public void testGetSubscribedTopicPartitions() {
+    Set<TopicPartition> topicPartitionSet = messageConsumingManager.getSubscribedTopicPartitions();
+    Assert.assertEquals(topicPartitionSet, ImmutableSet.of(
+            new TopicPartition("topic1", 1),
+            new TopicPartition("topic1", 2)
+    ));
   }
 
   @Test
@@ -91,7 +118,7 @@ public class MessageConsumingManagerTest {
         messageConsumingManager.getMessages(System.currentTimeMillis() + 500);
 
     // ensure the invocation is not too much:
-    // Assert.assertTrue(invocationCount < 10);
+    Assert.assertTrue(invocationCount < 40);
 
     // ensure the offset are handled properly
     Map<TopicPartition, OffsetAndMetadata> offsetMap = result.getOffsetInfo().getOffsetMap();
@@ -124,6 +151,13 @@ public class MessageConsumingManagerTest {
           new TopicPartition("topic1", 2), 150L)
     );
     messageConsumingManager.ackOffset(offsetInfo);
-    verify(mockConsumer, times(2)).ackOffset(offsetInfo);
+    verify(mockConsumer, times(1)).ackOffset(offsetInfo);
+  }
+
+  @AfterMethod
+  public void finish() {
+    messageConsumingManager.stopFetchers();
+    messageConsumingManager.unsubscribe("topic1", 1);
+    messageConsumingManager.unsubscribe("topic1", 2);
   }
 }

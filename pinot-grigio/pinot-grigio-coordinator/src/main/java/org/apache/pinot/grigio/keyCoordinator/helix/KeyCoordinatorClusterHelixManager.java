@@ -21,8 +21,6 @@ package org.apache.pinot.grigio.keyCoordinator.helix;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.HelixException;
 import org.apache.helix.HelixManager;
-import org.apache.helix.HelixManagerFactory;
-import org.apache.helix.InstanceType;
 import org.apache.helix.model.IdealState;
 import org.apache.helix.model.InstanceConfig;
 import org.apache.helix.model.MasterSlaveSMD;
@@ -67,6 +65,7 @@ public class KeyCoordinatorClusterHelixManager {
     IdealState keyCoordinatorMessageResourceIdealState = _helixAdmin
         .getResourceIdealState(_keyCoordinatorClusterName, _keyCoordinatorMessageResourceName);
     if (keyCoordinatorMessageResourceIdealState == null) {
+      // todo: update rebalance strategy
       _helixAdmin.addResource(_keyCoordinatorClusterName, _keyCoordinatorMessageResourceName,
           keyCoordinatorMessagePartitionCount, MasterSlaveSMD.name, IdealState.RebalanceMode.CUSTOMIZED.name());
     }

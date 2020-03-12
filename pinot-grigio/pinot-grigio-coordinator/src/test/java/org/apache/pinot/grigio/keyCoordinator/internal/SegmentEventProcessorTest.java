@@ -20,6 +20,8 @@ package org.apache.pinot.grigio.keyCoordinator.internal;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import org.apache.kafka.clients.consumer.OffsetAndMetadata;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.pinot.grigio.common.keyValueStore.ByteArrayWrapper;
 import org.apache.pinot.grigio.common.keyValueStore.KeyValueStoreDB;
 import org.apache.pinot.grigio.common.keyValueStore.KeyValueStoreTable;
@@ -37,6 +39,7 @@ import org.apache.pinot.grigio.common.storageProvider.retentionManager.UpdateLog
 import org.apache.pinot.grigio.common.updateStrategy.MessageResolveStrategy;
 import org.apache.pinot.grigio.common.updateStrategy.MessageTimeResolveStrategy;
 import org.apache.pinot.grigio.keyCoordinator.GrigioKeyCoordinatorMetrics;
+import org.apache.pinot.grigio.keyCoordinator.helix.KeyCoordinatorMasterSlaveOffsetManager;
 import org.apache.pinot.grigio.keyCoordinator.helix.KeyCoordinatorParticipantMastershipManager;
 import org.apache.pinot.grigio.keyCoordinator.starter.KeyCoordinatorConf;
 import org.testng.Assert;
@@ -50,6 +53,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.apache.pinot.grigio.keyCoordinator.starter.KeyCoordinatorConf.KC_OUTPUT_TOPIC_PREFIX_KEY;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -70,6 +74,7 @@ public class SegmentEventProcessorTest {
   private UpdateLogRetentionManager mockRetentionManager;
   private VersionMessageManager mockVersionManager;
   private KeyCoordinatorParticipantMastershipManager mockMastershipManager;
+  private KeyCoordinatorMasterSlaveOffsetManager mockMasterSlaveOffsetManager;
   private GrigioKeyCoordinatorMetrics mockMetrics;
 
   private Map<String, List<ProduceTask>> capturedTasks;
@@ -89,6 +94,7 @@ public class SegmentEventProcessorTest {
     mockRetentionManager = mock(UpdateLogRetentionManager.class);
     mockVersionManager = mock(VersionMessageManager.class);
     mockMastershipManager = mock(KeyCoordinatorParticipantMastershipManager.class);
+    mockMasterSlaveOffsetManager = mock(KeyCoordinatorMasterSlaveOffsetManager.class);
     mockMetrics = mock(GrigioKeyCoordinatorMetrics.class);
 
     // inner mock for retentionManager
@@ -123,18 +129,16 @@ public class SegmentEventProcessorTest {
     capturedTasks = new HashMap<>();
     // mock producer
     doAnswer(invocationOnMock -> {
-      List<ProduceTask> produceTasks = invocationOnMock.getArgument(0);
-      for (ProduceTask produceTask : produceTasks) {
-        produceTask.markComplete(null, null);
-        capturedTasks.computeIfAbsent(produceTask.getTopic(), t -> new ArrayList<>()).add(produceTask);
-      }
+      ProduceTask produceTask = invocationOnMock.getArgument(0);
+      produceTask.markComplete(null, null);
+      capturedTasks.computeIfAbsent(produceTask.getTopic(), t -> new ArrayList<>()).add(produceTask);
       return null;
-    }).when(mockProducer).batchProduce(anyList());
+    }).when(mockProducer).produce(any());
 
     when(mockMastershipManager.isParticipantMaster(anyInt())).thenReturn(true);
 
     processor = new SegmentEventProcessor(conf, mockProducer, messageResolveStrategy, mockDB, mockStorageProvider,
-        mockRetentionManager, mockVersionManager, mockMastershipManager, mockMetrics);
+        mockRetentionManager, mockVersionManager, mockMastershipManager, mockMasterSlaveOffsetManager, mockMetrics);
   }
 
   @Test
@@ -230,5 +234,17 @@ public class SegmentEventProcessorTest {
             new UpdateLogEntry(800, 10, LogEventType.INSERT, 1)
         )
     );
+    processor.stop();
+  }
+
+  @Test
+  public void testUpdateProcessedOffset() {
+    Map<TopicPartition, OffsetAndMetadata> offsetMap = ImmutableMap.of(
+            new TopicPartition("topic", 1), new OffsetAndMetadata(101),
+            new TopicPartition("topic", 2), new OffsetAndMetadata(201)
+    );
+    processor.updateProcessedOffset(offsetMap);
+    verify(mockMasterSlaveOffsetManager).setOffsetProcessedToPropertyStore(1, 100);
+    verify(mockMasterSlaveOffsetManager).setOffsetProcessedToPropertyStore(2, 200);
   }
 }

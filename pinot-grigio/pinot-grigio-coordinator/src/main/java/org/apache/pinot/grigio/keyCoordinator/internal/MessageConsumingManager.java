@@ -135,7 +135,7 @@ public class MessageConsumingManager {
     return _messageFetcherMap.keySet();
   }
 
-  protected KeyCoordinatorQueueConsumer newConsumer(Configuration consumerConfig) {
+  private KeyCoordinatorQueueConsumer newConsumer(Configuration consumerConfig) {
     KeyCoordinatorQueueConsumer consumer = new KeyCoordinatorQueueConsumer();
     consumer.init(consumerConfig, _metrics);
     return consumer;
