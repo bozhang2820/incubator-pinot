@@ -109,7 +109,7 @@ public class HybridQuickstart {
     File tempDir = new File("/tmp", String.valueOf(System.currentTimeMillis()));
     Preconditions.checkState(tempDir.mkdirs());
     final QuickstartRunner runner =
-        new QuickstartRunner(Lists.newArrayList(offlineRequest, realtimeTableRequest), 2, 2, 1, tempDir, false);
+        new QuickstartRunner(Lists.newArrayList(offlineRequest, realtimeTableRequest), 2, 2, 1, 0, tempDir, false);
     printStatus(Color.YELLOW, "***** Starting Kafka  *****");
     startKafka();
     printStatus(Color.YELLOW, "***** Starting Zookeeper, 2 servers, 2 brokers and 1 controller *****");

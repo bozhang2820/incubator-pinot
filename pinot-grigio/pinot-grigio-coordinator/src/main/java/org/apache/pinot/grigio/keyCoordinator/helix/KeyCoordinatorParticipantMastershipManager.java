@@ -30,10 +30,10 @@ import java.util.concurrent.ConcurrentHashMap;
 public class KeyCoordinatorParticipantMastershipManager {
   private static final Logger LOGGER = LoggerFactory.getLogger(KeyCoordinatorParticipantMastershipManager.class);
 
-  protected ConcurrentHashMap<Integer, Boolean> _isParticipantMaster;
+  protected ConcurrentHashMap<Integer, Boolean> _isParticipantMaster = new ConcurrentHashMap<>();
 
   public boolean isParticipantMaster(int partition) {
-    return _isParticipantMaster.get(partition);
+    return _isParticipantMaster.getOrDefault(partition, false);
   }
 
   public void setParticipantMaster(int partition, boolean participantMaster) {

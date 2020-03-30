@@ -52,7 +52,11 @@ public class StartCoordinatorCommand extends AbstractBaseAdminCommand implements
   @Option(name = "-tableName", required = false, metaVar = "<string>", usage = "tableName")
   private String _tableName = "";
 
+  @Option(name = "-portOverride", required = false, metaVar = "<int>", usage = "Port for the key coordinator, will override the one in config file")
+  private int _portOverride = 0;
+
   private boolean _shouldCreateKafkaTopic = true;
+  private boolean _shouldRebalance = false;
   private String _kcUpdateLogPath;
   private String _kcRocksDBPath;
 
@@ -66,8 +70,18 @@ public class StartCoordinatorCommand extends AbstractBaseAdminCommand implements
     return this;
   }
 
-  public StartCoordinatorCommand setShouldCreateKafkaTopic(boolean _shouldCreateKafkaTopic) {
-    this._shouldCreateKafkaTopic = _shouldCreateKafkaTopic;
+  public StartCoordinatorCommand setShouldCreateKafkaTopic(boolean shouldCreateKafkaTopic) {
+    _shouldCreateKafkaTopic = shouldCreateKafkaTopic;
+    return this;
+  }
+
+  public StartCoordinatorCommand setPortOverride(int portOverride) {
+    _portOverride = portOverride;
+    return this;
+  }
+
+  public StartCoordinatorCommand setShouldRebalance(boolean shouldRebalance) {
+    _shouldRebalance = shouldRebalance;
     return this;
   }
 
@@ -92,8 +106,8 @@ public class StartCoordinatorCommand extends AbstractBaseAdminCommand implements
   }
 
   private void ensureDirectoryCreated(KeyCoordinatorConf conf) {
-    _kcUpdateLogPath = _storageDir + "kcUpdateLogs";
-    _kcRocksDBPath = _storageDir + "kcRocksDB";
+    _kcUpdateLogPath = _storageDir + "kcUpdateLogs_" + _portOverride;
+    _kcRocksDBPath = _storageDir + "kcRocksDB_" + _portOverride;
     File kcRocksDBDir = new File(_kcRocksDBPath);
     File kcUpdateLogDir = new File(_kcUpdateLogPath);
     kcRocksDBDir.mkdir();
@@ -119,6 +133,12 @@ public class StartCoordinatorCommand extends AbstractBaseAdminCommand implements
     }
   }
 
+  private void overridePort(KeyCoordinatorConf conf) {
+    if (_portOverride != 0) {
+      conf.setPort(_portOverride);
+    }
+  }
+
   @Override
   public boolean execute()
       throws Exception {
@@ -138,13 +158,16 @@ public class StartCoordinatorCommand extends AbstractBaseAdminCommand implements
       if (_shouldCreateKafkaTopic) {
         ensureKafkaTopicCreated(conf);
       }
+      overridePort(conf);
 
       LOGGER.info("Executing command: " + toString());
       KeyCoordinatorStarter starter = KeyCoordinatorStarter.startDefault(conf);
-      starter.startManually();
+      if (_shouldRebalance) {
+        starter.startManually();
+      }
       return true;
     } catch (Exception e) {
-      LOGGER.error("Caught exception while starting Pinot server, exiting.", e);
+      LOGGER.error("Caught exception while starting Pinot key coordinator, exiting.", e);
       System.exit(-1);
       return false;
     }

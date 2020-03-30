@@ -18,15 +18,21 @@
  */
 package org.apache.pinot.grigio.keyCoordinator.helix;
 
+import org.apache.commons.configuration.Configuration;
 import org.apache.helix.HelixAdmin;
 import org.apache.helix.HelixException;
 import org.apache.helix.HelixManager;
+import org.apache.helix.HelixManagerFactory;
+import org.apache.helix.InstanceType;
 import org.apache.helix.model.IdealState;
 import org.apache.helix.model.InstanceConfig;
 import org.apache.helix.model.MasterSlaveSMD;
 import org.apache.pinot.common.utils.CommonConstants;
+import org.apache.pinot.grigio.common.config.CommonConfig;
+import org.apache.pinot.grigio.keyCoordinator.GrigioKeyCoordinatorMetrics;
 import org.apache.pinot.grigio.keyCoordinator.api.KeyCoordinatorInstance;
 import org.apache.pinot.grigio.keyCoordinator.internal.MessageConsumingManager;
+import org.apache.pinot.grigio.keyCoordinator.starter.KeyCoordinatorConf;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -47,15 +53,17 @@ public class KeyCoordinatorClusterHelixManager {
   private final HelixManager _controllerHelixManager;
   private final HelixManager _participantHelixManager;
   private final HelixAdmin _helixAdmin;
+  private final KeyCoordinatorMasterSlaveOffsetManager _offsetManager;
+  private final MessageConsumingManager _messageConsumingManager;
 
-  public KeyCoordinatorClusterHelixManager(@Nonnull String zkURL, @Nonnull String keyCoordinatorClusterName,
-                                           @Nonnull String keyCoordinatorId, @Nonnull MessageConsumingManager messageConsumingManager,
+  public KeyCoordinatorClusterHelixManager(@Nonnull KeyCoordinatorConf keyCoordinatorConf,
+                                           @Nonnull String keyCoordinatorId,
                                            @Nonnull KeyCoordinatorParticipantMastershipManager mastershipManager,
-                                           @Nonnull HelixManager participantHelixManager,
-                                           @Nonnull String keyCoordinatorMessageTopic, int keyCoordinatorMessagePartitionCount)
+                                           @Nonnull String hostName,
+                                           GrigioKeyCoordinatorMetrics metrics)
       throws Exception {
-    _helixZkURL = zkURL;
-    _keyCoordinatorClusterName = keyCoordinatorClusterName;
+    _helixZkURL = keyCoordinatorConf.getZkStr();
+    _keyCoordinatorClusterName = keyCoordinatorConf.getKeyCoordinatorClusterName();
     _keyCoordinatorMessageResourceName = CommonConstants.Helix.KEY_COORDINATOR_MESSAGE_RESOURCE_NAME;
     _keyCoordinatorId = keyCoordinatorId;
 
@@ -67,7 +75,7 @@ public class KeyCoordinatorClusterHelixManager {
     if (keyCoordinatorMessageResourceIdealState == null) {
       // todo: update rebalance strategy
       _helixAdmin.addResource(_keyCoordinatorClusterName, _keyCoordinatorMessageResourceName,
-          keyCoordinatorMessagePartitionCount, MasterSlaveSMD.name, IdealState.RebalanceMode.CUSTOMIZED.name());
+          keyCoordinatorConf.getKeyCoordinatorMessagePartitionCount(), MasterSlaveSMD.name, IdealState.RebalanceMode.SEMI_AUTO.name());
     }
 
     try {
@@ -77,14 +85,29 @@ public class KeyCoordinatorClusterHelixManager {
           _keyCoordinatorClusterName);
     }
 
-    _participantHelixManager = participantHelixManager;
-    _participantHelixManager.getStateMachineEngine().registerStateModelFactory(MasterSlaveSMD.name,
-        new KeyCoordinatorMessageStateModelFactory(messageConsumingManager, mastershipManager, keyCoordinatorMessageTopic));
+    _participantHelixManager = HelixManagerFactory
+        .getZKHelixManager(keyCoordinatorConf.getKeyCoordinatorClusterName(), _keyCoordinatorId, InstanceType.PARTICIPANT, keyCoordinatorConf.getZkStr());
     _participantHelixManager.connect();
+
+    Configuration consumerConfig = keyCoordinatorConf.getConsumerConf();
+    consumerConfig.setProperty(CommonConfig.RPC_QUEUE_CONFIG.HOSTNAME_KEY, hostName);
+
+    _offsetManager = new KeyCoordinatorMasterSlaveOffsetManager(_participantHelixManager);
+    _messageConsumingManager = new MessageConsumingManager(keyCoordinatorConf, consumerConfig, mastershipManager, _offsetManager, metrics);
+    _participantHelixManager.getStateMachineEngine().registerStateModelFactory(MasterSlaveSMD.name,
+        new KeyCoordinatorMessageStateModelFactory(_messageConsumingManager, mastershipManager, keyCoordinatorConf.getKeyCoordinatorMessageTopic()));
   }
 
   public HelixManager getControllerHelixManager() {
     return _controllerHelixManager;
+  }
+
+  public KeyCoordinatorMasterSlaveOffsetManager getMasterSlaveOffsetManager() {
+    return _offsetManager;
+  }
+
+  public MessageConsumingManager getMessageConsumingManager() {
+    return _messageConsumingManager;
   }
 
   public List<String> getAllInstances() {

@@ -61,7 +61,7 @@ public class UpsertQuickStart {
     File tempDir = new File("/tmp", String.valueOf(System.currentTimeMillis()));
     Preconditions.checkState(tempDir.mkdirs());
     QuickstartTableRequest request = new QuickstartTableRequest("meetupRsvp", schemaFile, tableConfigFile);
-    final QuickstartRunner runner = new QuickstartRunner(Lists.newArrayList(request), 1, 1, 1, tempDir);
+    final QuickstartRunner runner = new QuickstartRunner(Lists.newArrayList(request), 1, 1, 1, 2, tempDir);
 
     printStatus(Color.CYAN, "***** Starting Kafka *****");
     final ZkStarter.ZookeeperInstance zookeeperInstance = ZkStarter.startLocalZkServer();
@@ -73,7 +73,7 @@ public class UpsertQuickStart {
     KafkaStarterUtils.createTopic("meetupRSVPEvents", KafkaStarterUtils.DEFAULT_ZK_STR, 10);
     KafkaStarterUtils.createTopic("pinot-upsert-kc", KafkaStarterUtils.DEFAULT_ZK_STR, 1);
     KafkaStarterUtils.createTopic("pinot_upsert_meetupRsvp", KafkaStarterUtils.DEFAULT_ZK_STR, 1);
-    printStatus(Color.CYAN, "***** Starting Zookeeper, controller, server and broker *****");
+    printStatus(Color.CYAN, "***** Starting Zookeeper, controller, server, broker and key coordinator *****");
     runner.startAllForUpsert();
     printStatus(Color.CYAN, "***** Adding meetupRSVP schema *****");
     runner.addSchema();

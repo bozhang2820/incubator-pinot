@@ -124,6 +124,10 @@ public class KeyCoordinatorConf extends PropertiesConfiguration {
     return this.subset(SERVER_CONFIG).getInt(KeyCoordinatorConf.PORT, KeyCoordinatorConf.PORT_DEFAULT);
   }
 
+  public void setPort(int port) {
+    this.subset(SERVER_CONFIG).setProperty(KeyCoordinatorConf.PORT, port);
+  }
+
   public String getTopicPrefix() {
     return this.getString(KC_OUTPUT_TOPIC_PREFIX_KEY);
   }

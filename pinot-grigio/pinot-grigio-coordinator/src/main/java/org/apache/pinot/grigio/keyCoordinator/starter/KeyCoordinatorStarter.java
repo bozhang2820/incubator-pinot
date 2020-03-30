@@ -23,9 +23,6 @@ import com.google.common.base.Preconditions;
 import com.yammer.metrics.core.MetricsRegistry;
 import org.apache.commons.configuration.Configuration;
 import org.apache.commons.lang.StringUtils;
-import org.apache.helix.HelixManager;
-import org.apache.helix.HelixManagerFactory;
-import org.apache.helix.InstanceType;
 import org.apache.pinot.common.metrics.MetricsHelper;
 import org.apache.pinot.common.utils.CommonConstants;
 import org.apache.pinot.grigio.common.utils.IdealStateHelper;
@@ -84,24 +81,15 @@ public class KeyCoordinatorStarter {
     _versionMessageProducer = getVersionMessageProducer(_keyCoordinatorConf.getVersionMessageProducerConf());
     _mastershipManager = new KeyCoordinatorParticipantMastershipManager();
 
-    Configuration consumerConfig = _keyCoordinatorConf.getConsumerConf();
-    consumerConfig.setProperty(CommonConfig.RPC_QUEUE_CONFIG.HOSTNAME_KEY, _hostName);
-
-    HelixManager participantHelixManager = HelixManagerFactory
-        .getZKHelixManager(_keyCoordinatorConf.getKeyCoordinatorClusterName(), _instanceId, InstanceType.PARTICIPANT, _keyCoordinatorConf.getZkStr());
-    _offsetManager = new KeyCoordinatorMasterSlaveOffsetManager(participantHelixManager);
-    _messageConsumingManager = new MessageConsumingManager(_keyCoordinatorConf, consumerConfig, _mastershipManager, _offsetManager, _metrics);
-
     _keyCoordinatorClusterHelixManager = new KeyCoordinatorClusterHelixManager(
-        _keyCoordinatorConf.getZkStr(),
-        _keyCoordinatorConf.getKeyCoordinatorClusterName(),
+        _keyCoordinatorConf,
         _instanceId,
-        _messageConsumingManager,
         _mastershipManager,
-        participantHelixManager,
-        conf.getKeyCoordinatorMessageTopic(),
-        conf.getKeyCoordinatorMessagePartitionCount()
+        _hostName,
+        _metrics
     );
+    _offsetManager = _keyCoordinatorClusterHelixManager.getMasterSlaveOffsetManager();
+    _messageConsumingManager = _keyCoordinatorClusterHelixManager.getMessageConsumingManager();
     if (!_keyCoordinatorConf.isLocalTestingMode()) {
       UpdateLogStorageProvider.init(_keyCoordinatorConf.getStorageProviderConf());
     }
@@ -171,11 +159,11 @@ public class KeyCoordinatorStarter {
     LOGGER.info("finished shutdown version message producer");
   }
 
-  @VisibleForTesting
   /**
    * method used by integration test to start the helix rebalance manually (instead of http /start endpoint)
    * create so that we can start helix rebalance if we know exactly that after some point all server has been started
    */
+  @VisibleForTesting
   public void startManually() {
     _keyCoordinatorClusterHelixManager.rebalance();
   }

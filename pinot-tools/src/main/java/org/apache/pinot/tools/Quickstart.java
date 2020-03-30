@@ -141,7 +141,7 @@ public class Quickstart {
     Preconditions.checkState(tempDir.mkdirs());
     QuickstartTableRequest request =
         new QuickstartTableRequest("baseballStats", schemaFile, tableConfigFile, quickStartDataDir, FileFormat.CSV);
-    final QuickstartRunner runner = new QuickstartRunner(Lists.newArrayList(request), 1, 1, 1, tempDir);
+    final QuickstartRunner runner = new QuickstartRunner(Lists.newArrayList(request), 1, 1, 1, 0, tempDir);
 
     printStatus(Color.CYAN, "***** Starting Zookeeper, controller, broker and server *****");
     runner.startAll();

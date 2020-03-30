@@ -44,11 +44,13 @@ public class QuickstartRunner {
   private static final int DEFAULT_SERVER_ADMIN_API_PORT = 7500;
   private static final int DEFAULT_BROKER_PORT = 8000;
   private static final int DEFAULT_CONTROLLER_PORT = 9000;
+  private static final int DEFAULT_KEY_COORDINATOR_PORT = 10000;
 
   private final List<QuickstartTableRequest> _tableRequests;
   private final int _numServers;
   private final int _numBrokers;
   private final int _numControllers;
+  private final int _numKeyCoordinators;
   private final File _tempDir;
   private final boolean _enableTenantIsolation;
   private String _enableUpsert = "false";
@@ -59,21 +61,22 @@ public class QuickstartRunner {
   private boolean _isStopped = false;
 
   public QuickstartRunner(List<QuickstartTableRequest> tableRequests, int numServers, int numBrokers,
-      int numControllers, File tempDir, boolean enableIsolation)
+      int numControllers, int numKeyCoordinators, File tempDir, boolean enableIsolation)
       throws Exception {
     _tableRequests = tableRequests;
     _numServers = numServers;
     _numBrokers = numBrokers;
     _numControllers = numControllers;
+    _numKeyCoordinators = numKeyCoordinators;
     _tempDir = tempDir;
     _enableTenantIsolation = enableIsolation;
     clean();
   }
 
   public QuickstartRunner(List<QuickstartTableRequest> tableRequests, int numServers, int numBrokers,
-      int numControllers, File tempDir)
+      int numControllers, int numKeyCoordinators, File tempDir)
       throws Exception {
-    this(tableRequests, numServers, numBrokers, numControllers, tempDir, true);
+    this(tableRequests, numServers, numBrokers, numControllers, numKeyCoordinators, tempDir, true);
   }
 
   private void startZookeeper()
@@ -116,13 +119,16 @@ public class QuickstartRunner {
     }
   }
 
-  private void startCoordinator() throws Exception {
-    StartCoordinatorCommand coordinatorStarter = new StartCoordinatorCommand();
-    URL resource = QuickstartRunner.class.getClassLoader().getResource("conf/upsert_quickstart_key_coordinator.properties");
-    File kcCongfile = new File(System.getProperty("java.io.tmpdir"), "kcConfig.properties");
-    FileUtils.copyURLToFile(resource, kcCongfile);
-    coordinatorStarter.setConfigFileName(kcCongfile.getPath()).setShouldCreateKafkaTopic(false);
-    coordinatorStarter.execute();
+  private void startCoordinators() throws Exception {
+    for (int i = 0; i < _numKeyCoordinators; i++) {
+      StartCoordinatorCommand coordinatorStarter = new StartCoordinatorCommand();
+      URL resource = QuickstartRunner.class.getClassLoader().getResource("conf/upsert_quickstart_key_coordinator.properties");
+      File kcCongfile = new File(System.getProperty("java.io.tmpdir"), "kcConfig.properties");
+      FileUtils.copyURLToFile(resource, kcCongfile);
+      coordinatorStarter.setConfigFileName(kcCongfile.getPath()).setShouldCreateKafkaTopic(false)
+          .setPortOverride(DEFAULT_KEY_COORDINATOR_PORT + i).setShouldRebalance(i == _numKeyCoordinators - 1);
+      coordinatorStarter.execute();
+    }
   }
 
   private void clean()
@@ -144,7 +150,7 @@ public class QuickstartRunner {
     startControllers();
     startBrokers();
     startServers();
-    startCoordinator();
+    startCoordinators();
   }
 
   public void stop()
