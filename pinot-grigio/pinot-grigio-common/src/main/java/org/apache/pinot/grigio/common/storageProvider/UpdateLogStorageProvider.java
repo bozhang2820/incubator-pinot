@@ -76,21 +76,25 @@ public class UpdateLogStorageProvider {
     }
   }
 
-  public synchronized void addSegment(String tableName, String segmentName) throws IOException {
-    maybeAddTableToMetadata(tableName);
-    Map<String, SegmentUpdateLogStorageProvider> segmentMap = _virtualColumnStorage.get(tableName);
+  public synchronized void addSegment(String tableNameWithType, String segmentName) throws IOException {
+    maybeAddTableToMetadata(tableNameWithType);
+    Map<String, SegmentUpdateLogStorageProvider> segmentMap = _virtualColumnStorage.get(tableNameWithType);
     if (!segmentMap.containsKey(segmentName)) {
-      File tableDir = new File(_virtualColumnStorageDir, tableName);
-      LOGGER.info("adding local update log storage for table {} segment {}", tableName, segmentName);
-      final File segmentUpdateFile = new File(tableDir, segmentName);
+      LOGGER.info("adding local update log storage for table {} segment {}", tableNameWithType, segmentName);
+      final File segmentUpdateFile = getSegmentFile(tableNameWithType, segmentName);
       if (!segmentUpdateFile.exists()) {
         LOGGER.info("creating new local update log storage at {}", segmentUpdateFile.getPath());
         boolean result = segmentUpdateFile.createNewFile();
-        Preconditions.checkState(result, "creating segment path failed " + tableDir);
+        Preconditions.checkState(result, "creating segment path failed " + segmentUpdateFile);
       }
       Preconditions.checkState(segmentUpdateFile.isFile(), "expect segment log location as file");
       segmentMap.put(segmentName, new SegmentUpdateLogStorageProvider(segmentUpdateFile));
     }
+  }
+
+  public File getSegmentFile(String tableNameWithType, String segmentName) {
+    File tableDir = new File(_virtualColumnStorageDir, tableNameWithType);
+    return new File(tableDir, segmentName);
   }
 
   /**
@@ -156,14 +160,14 @@ public class UpdateLogStorageProvider {
     }
   }
 
-  public void addDataToFile(String tableName, String segmentName, List<UpdateLogEntry> messages) throws IOException {
+  public void addDataToFile(String tableNameWithType, String segmentName, List<UpdateLogEntry> messages) throws IOException {
     Preconditions.checkState(!_isClosed, "update log provider has been closed");
-    maybeAddTableToMetadata(tableName);
-    Map<String, SegmentUpdateLogStorageProvider> segmentProviderMap =  _virtualColumnStorage.get(tableName);
+    maybeAddTableToMetadata(tableNameWithType);
+    Map<String, SegmentUpdateLogStorageProvider> segmentProviderMap =  _virtualColumnStorage.get(tableNameWithType);
     if (!segmentProviderMap.containsKey(segmentName)) {
       // TODO fix this part as we are adding all segment metadata
       // need to work on new design to prevent writing too much data
-      addSegment(tableName, segmentName);
+      addSegment(tableNameWithType, segmentName);
     }
     segmentProviderMap.get(segmentName).addData(messages);
   }

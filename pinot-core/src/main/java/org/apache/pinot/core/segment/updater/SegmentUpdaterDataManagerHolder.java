@@ -50,18 +50,18 @@ public class SegmentUpdaterDataManagerHolder {
   /**
    * check if there is any data manager associated with the given table
    */
-  public boolean hasTable(String tableName) {
-    return _tableSegmentMap.containsKey(tableName);
+  public boolean hasTable(String tableNameWithType) {
+    return _tableSegmentMap.containsKey(tableNameWithType);
   }
 
   /**
    * get a set of data manager for the given table name and segment name
    */
-  public synchronized Set<UpsertSegmentDataManager> getDataManagers(String tableName, String segmentName) {
-    if (!_tableSegmentMap.containsKey(tableName)) {
-      LOGGER.error("try to fetch data manager for non-existing table {} segment {}", tableName, segmentName);
+  public synchronized Set<UpsertSegmentDataManager> getDataManagers(String tableNameWithType, String segmentName) {
+    if (!_tableSegmentMap.containsKey(tableNameWithType)) {
+      LOGGER.error("try to fetch data manager for non-existing table {} segment {}", tableNameWithType, segmentName);
     } else {
-      final Map<String, Set<UpsertSegmentDataManager>> segmentDataManagerMap = _tableSegmentMap.get(tableName);
+      final Map<String, Set<UpsertSegmentDataManager>> segmentDataManagerMap = _tableSegmentMap.get(tableNameWithType);
       if (segmentDataManagerMap.containsKey(segmentName)) {
         return ImmutableSet.copyOf(segmentDataManagerMap.get(segmentName));
       }
@@ -72,26 +72,26 @@ public class SegmentUpdaterDataManagerHolder {
   /**
    * add a data manager for a given table and segment name
    */
-  public synchronized void addDataManager(String tableName, String segmentName, UpsertSegmentDataManager dataManager) {
-    LOGGER.info("adding new data manager to updater for table {}, segment {}", tableName, segmentName);
-    if (!_tableSegmentMap.containsKey(tableName)) {
-      _tableSegmentMap.put(tableName, new ConcurrentHashMap<>());
+  public synchronized void addDataManager(String tableNameWithType, String segmentName, UpsertSegmentDataManager dataManager) {
+    LOGGER.info("adding new data manager to updater for table {}, segment {}", tableNameWithType, segmentName);
+    if (!_tableSegmentMap.containsKey(tableNameWithType)) {
+      _tableSegmentMap.put(tableNameWithType, new ConcurrentHashMap<>());
     }
-    _tableSegmentMap.get(tableName).computeIfAbsent(segmentName, sn -> ConcurrentHashMap.newKeySet()).add(dataManager);
+    _tableSegmentMap.get(tableNameWithType).computeIfAbsent(segmentName, sn -> ConcurrentHashMap.newKeySet()).add(dataManager);
   }
 
   /**
    * remove a specific data manager for a given table and segment name.
    * do nothing if there is no such data manager for the given table/segment name
    */
-  public synchronized void removeDataManager(String tableName, String segmentName,
+  public synchronized void removeDataManager(String tableNameWithType, String segmentName,
                                              UpsertSegmentDataManager toDeleteManager) {
-    Map<String, Set<UpsertSegmentDataManager>> segmentMap = _tableSegmentMap.get(tableName);
+    Map<String, Set<UpsertSegmentDataManager>> segmentMap = _tableSegmentMap.get(tableNameWithType);
     if (segmentMap != null) {
       Set<UpsertSegmentDataManager> segmentDataManagers = segmentMap.get(segmentName);
       if (segmentDataManagers != null) {
         segmentDataManagers.remove(toDeleteManager);
-        LOGGER.info("removing data manager for table {} segment {}", tableName, segmentName);
+        LOGGER.info("removing data manager for table {} segment {}", tableNameWithType, segmentName);
         if (segmentDataManagers.size() == 0) {
           segmentMap.remove(segmentName);
         }
@@ -103,8 +103,8 @@ public class SegmentUpdaterDataManagerHolder {
    * remove all data managers for a table and segment
    * @return true if we indeed remove any data manager, false otherwise
    */
-  public synchronized boolean removeAllDataManagerForSegment(String tableName, String segmentName) {
-    Map<String, Set<UpsertSegmentDataManager>> segmentManagerMap = _tableSegmentMap.get(tableName);
+  public synchronized boolean removeAllDataManagerForSegment(String tableNameWithType, String segmentName) {
+    Map<String, Set<UpsertSegmentDataManager>> segmentManagerMap = _tableSegmentMap.get(tableNameWithType);
     if (segmentManagerMap != null) {
       if (segmentManagerMap.containsKey(segmentName)) {
         LOGGER.error("trying to remove segment storage with {} segment data manager", segmentManagerMap.get(segmentName).size());
@@ -119,10 +119,10 @@ public class SegmentUpdaterDataManagerHolder {
    * check if the table still has any associated data manager. If there is no data managers, then removed it from cached
    * @return true if the given table is removed, false otherwise
    */
-  public synchronized boolean maybeRemoveTable(String tableName) {
-    Map<String, Set<UpsertSegmentDataManager>> segmentManagerMap = _tableSegmentMap.get(tableName);
+  public synchronized boolean maybeRemoveTable(String tableNameWithType) {
+    Map<String, Set<UpsertSegmentDataManager>> segmentManagerMap = _tableSegmentMap.get(tableNameWithType);
     if (segmentManagerMap != null && segmentManagerMap.size() == 0) {
-      _tableSegmentMap.remove(tableName);
+      _tableSegmentMap.remove(tableNameWithType);
       return true;
     }
     return false;

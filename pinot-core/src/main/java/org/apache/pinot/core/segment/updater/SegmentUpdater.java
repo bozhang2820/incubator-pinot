@@ -159,15 +159,15 @@ public class SegmentUpdater implements SegmentDeletionListener {
         startTime = System.currentTimeMillis();
         AtomicLong timeToStoreUpdateLogs = new AtomicLong(0);
         for (Map.Entry<String, TableUpdateLogs> entry : tableSegmentToUpdateLogs.entrySet()) {
-          String tableName = TableNameBuilder.ensureTableNameWithType(entry.getKey(), CommonConstants.Helix.TableType.REALTIME);
+          String tableNameWithType = TableNameBuilder.ensureTableNameWithType(entry.getKey(), CommonConstants.Helix.TableType.REALTIME);
           int tableMessageCount = 0;
-          if (_dataManagersHolder.hasTable(tableName)) {
+          if (_dataManagersHolder.hasTable(tableNameWithType)) {
             final TableUpdateLogs segment2UpdateLogsMap = entry.getValue();
-            updateSegmentVirtualColumns(tableName, segment2UpdateLogsMap, timeToStoreUpdateLogs);
+            updateSegmentVirtualColumns(tableNameWithType, segment2UpdateLogsMap, timeToStoreUpdateLogs);
           } else {
-            LOGGER.warn("got messages for table {} not in this server", tableName);
+            LOGGER.warn("got messages for table {} not in this server", tableNameWithType);
           }
-          _metrics.addMeteredTableValue(tableName, GrigioMeter.MESSAGE_FETCH_PER_ROUND, tableMessageCount);
+          _metrics.addMeteredTableValue(tableNameWithType, GrigioMeter.MESSAGE_FETCH_PER_ROUND, tableMessageCount);
         }
         _metrics.addTimedValueMs(GrigioTimer.UPDATE_LOCAL_LOG_FILE_TIME, timeToStoreUpdateLogs.get());
         _metrics.addTimedValueMs(GrigioTimer.UPDATE_DATAMANAGER_TIME, System.currentTimeMillis() - startTime);
@@ -200,11 +200,11 @@ public class SegmentUpdater implements SegmentDeletionListener {
   /**
    * Update the virtual columns of affected segments of a table.
    */
-  private void updateSegmentVirtualColumns(String tableName, TableUpdateLogs segment2UpdateLogsMap,
+  private void updateSegmentVirtualColumns(String tableNameWithType, TableUpdateLogs segment2UpdateLogsMap,
                                            AtomicLong timeToStoreUpdateLogs) throws IOException{
     for (Map.Entry<String, List<UpdateLogEntry>> segmentEntry : segment2UpdateLogsMap.getSegments2UpdateLog().entrySet()) {
       final String segmentNameStr = segmentEntry.getKey();
-      updateVirtualColumn(tableName, segmentNameStr,
+      updateVirtualColumn(tableNameWithType, segmentNameStr,
           segment2UpdateLogsMap.get(segmentNameStr), timeToStoreUpdateLogs);
     }
   }
@@ -214,17 +214,17 @@ public class SegmentUpdater implements SegmentDeletionListener {
    * from consuming to online (mutable segment to immutable segment). In most of cases we expect only one segment manager
    * in this set of UpsertSegmentDataManager
    */
-  private void updateVirtualColumn(String table, String segment,
+  private void updateVirtualColumn(String tableNameWithType, String segment,
                                    List<UpdateLogEntry> messages, AtomicLong timeToStoreUpdateLogs) throws IOException {
-    Set<UpsertSegmentDataManager> dataManagers = _dataManagersHolder.getDataManagers(table, segment);
+    Set<UpsertSegmentDataManager> dataManagers = _dataManagersHolder.getDataManagers(tableNameWithType, segment);
     LOGGER.debug("updating segment {} with {} results for {} data managers", segment, messages.size(),
         dataManagers.size());
-    if (dataManagers.size() > 0 || _retentionManager.getRetentionManagerForTable(table).shouldIngestForSegment(segment)) {
-      storeUpdateLogs(table, segment, messages, timeToStoreUpdateLogs);
+    if (dataManagers.size() > 0 || _retentionManager.getRetentionManagerForTable(tableNameWithType).shouldIngestForSegment(segment)) {
+      storeUpdateLogs(tableNameWithType, segment, messages, timeToStoreUpdateLogs);
     }
     try {
       // refetch the data managers from holder in case there are updates
-      for (UpsertSegmentDataManager dataManager: _dataManagersHolder.getDataManagers(table, segment)) {
+      for (UpsertSegmentDataManager dataManager: _dataManagersHolder.getDataManagers(tableNameWithType, segment)) {
         dataManager.updateVirtualColumns(messages);
       }
     } catch (Exception ex) {
