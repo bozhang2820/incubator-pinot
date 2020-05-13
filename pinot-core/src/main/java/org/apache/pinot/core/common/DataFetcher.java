@@ -24,6 +24,7 @@ import java.util.Map;
 import org.apache.pinot.core.operator.docvalsets.SingleValueSet;
 import org.apache.pinot.core.plan.DocIdSetPlanNode;
 import org.apache.pinot.core.segment.index.readers.Dictionary;
+import org.apache.pinot.core.segment.index.readers.NullValueVectorReader;
 
 
 /**
@@ -42,6 +43,7 @@ public class DataFetcher {
   private final Map<String, SingleValueSet> _singleValueSetMap;
   // For multi-valued column
   private final Map<String, BlockMultiValIterator> _blockMultiValIteratorMap;
+  private final Map<String, NullValueVectorReader> _nullValueVectorReaderMap;
   private final int[] _reusableMVDictIds;
 
   /**
@@ -54,6 +56,7 @@ public class DataFetcher {
     _dictionaryMap = new HashMap<>(numColumns);
     _singleValueSetMap = new HashMap<>(numColumns);
     _blockMultiValIteratorMap = new HashMap<>(numColumns);
+    _nullValueVectorReaderMap = new HashMap<>(numColumns);
 
     int maxNumValuesPerMVEntry = 0;
     for (Map.Entry<String, DataSource> entry : dataSourceMap.entrySet()) {
@@ -68,6 +71,7 @@ public class DataFetcher {
         _blockMultiValIteratorMap.put(column, (BlockMultiValIterator) blockValueSet.iterator());
         maxNumValuesPerMVEntry = Math.max(maxNumValuesPerMVEntry, dataSourceMetadata.getMaxNumValuesPerMVEntry());
       }
+      _nullValueVectorReaderMap.put(column, dataSource.getNullValueVector());
     }
 
     _reusableMVDictIds = new int[maxNumValuesPerMVEntry];
@@ -216,11 +220,16 @@ public class DataFetcher {
    * @param outDictIds Buffer for output
    */
   public void fetchDictIds(String column, int[] inDocIds, int length, int[][] outDictIds) {
+    NullValueVectorReader nullValueVectorReader = _nullValueVectorReaderMap.get(column);
     BlockMultiValIterator blockMultiValIterator = _blockMultiValIteratorMap.get(column);
     for (int i = 0; i < length; i++) {
-      blockMultiValIterator.skipTo(inDocIds[i]);
-      int numMultiValues = blockMultiValIterator.nextIntVal(_reusableMVDictIds);
-      outDictIds[i] = Arrays.copyOfRange(_reusableMVDictIds, 0, numMultiValues);
+      if (nullValueVectorReader != null && nullValueVectorReader.isNull(inDocIds[i])) {
+        outDictIds[i] = new int[0];
+      } else {
+        blockMultiValIterator.skipTo(inDocIds[i]);
+        int numMultiValues = blockMultiValIterator.nextIntVal(_reusableMVDictIds);
+        outDictIds[i] = Arrays.copyOfRange(_reusableMVDictIds, 0, numMultiValues);
+      }
     }
   }
 
@@ -233,12 +242,17 @@ public class DataFetcher {
    * @param outValues Buffer for output
    */
   public void fetchIntValues(String column, int[] inDocIds, int length, int[][] outValues) {
+    NullValueVectorReader nullValueVectorReader = _nullValueVectorReaderMap.get(column);
     BlockMultiValIterator blockMultiValIterator = _blockMultiValIteratorMap.get(column);
     for (int i = 0; i < length; i++) {
-      blockMultiValIterator.skipTo(inDocIds[i]);
-      int numMultiValues = blockMultiValIterator.nextIntVal(_reusableMVDictIds);
-      outValues[i] = new int[numMultiValues];
-      _dictionaryMap.get(column).readIntValues(_reusableMVDictIds, numMultiValues, outValues[i]);
+      if (nullValueVectorReader != null && nullValueVectorReader.isNull(inDocIds[i])) {
+        outValues[i] = new int[0];
+      } else {
+        blockMultiValIterator.skipTo(inDocIds[i]);
+        int numMultiValues = blockMultiValIterator.nextIntVal(_reusableMVDictIds);
+        outValues[i] = new int[numMultiValues];
+        _dictionaryMap.get(column).readIntValues(_reusableMVDictIds, numMultiValues, outValues[i]);
+      }
     }
   }
 
@@ -251,12 +265,17 @@ public class DataFetcher {
    * @param outValues Buffer for output
    */
   public void fetchLongValues(String column, int[] inDocIds, int length, long[][] outValues) {
+    NullValueVectorReader nullValueVectorReader = _nullValueVectorReaderMap.get(column);
     BlockMultiValIterator blockMultiValIterator = _blockMultiValIteratorMap.get(column);
     for (int i = 0; i < length; i++) {
-      blockMultiValIterator.skipTo(inDocIds[i]);
-      int numMultiValues = blockMultiValIterator.nextIntVal(_reusableMVDictIds);
-      outValues[i] = new long[numMultiValues];
-      _dictionaryMap.get(column).readLongValues(_reusableMVDictIds, numMultiValues, outValues[i]);
+      if (nullValueVectorReader != null && nullValueVectorReader.isNull(inDocIds[i])) {
+        outValues[i] = new long[0];
+      } else {
+        blockMultiValIterator.skipTo(inDocIds[i]);
+        int numMultiValues = blockMultiValIterator.nextIntVal(_reusableMVDictIds);
+        outValues[i] = new long[numMultiValues];
+        _dictionaryMap.get(column).readLongValues(_reusableMVDictIds, numMultiValues, outValues[i]);
+      }
     }
   }
 
@@ -269,12 +288,17 @@ public class DataFetcher {
    * @param outValues Buffer for output
    */
   public void fetchFloatValues(String column, int[] inDocIds, int length, float[][] outValues) {
+    NullValueVectorReader nullValueVectorReader = _nullValueVectorReaderMap.get(column);
     BlockMultiValIterator blockMultiValIterator = _blockMultiValIteratorMap.get(column);
     for (int i = 0; i < length; i++) {
-      blockMultiValIterator.skipTo(inDocIds[i]);
-      int numMultiValues = blockMultiValIterator.nextIntVal(_reusableMVDictIds);
-      outValues[i] = new float[numMultiValues];
-      _dictionaryMap.get(column).readFloatValues(_reusableMVDictIds, numMultiValues, outValues[i]);
+      if (nullValueVectorReader != null && nullValueVectorReader.isNull(inDocIds[i])) {
+        outValues[i] = new float[0];
+      } else {
+        blockMultiValIterator.skipTo(inDocIds[i]);
+        int numMultiValues = blockMultiValIterator.nextIntVal(_reusableMVDictIds);
+        outValues[i] = new float[numMultiValues];
+        _dictionaryMap.get(column).readFloatValues(_reusableMVDictIds, numMultiValues, outValues[i]);
+      }
     }
   }
 
@@ -287,12 +311,17 @@ public class DataFetcher {
    * @param outValues Buffer for output
    */
   public void fetchDoubleValues(String column, int[] inDocIds, int length, double[][] outValues) {
+    NullValueVectorReader nullValueVectorReader = _nullValueVectorReaderMap.get(column);
     BlockMultiValIterator blockMultiValIterator = _blockMultiValIteratorMap.get(column);
     for (int i = 0; i < length; i++) {
-      blockMultiValIterator.skipTo(inDocIds[i]);
-      int numMultiValues = blockMultiValIterator.nextIntVal(_reusableMVDictIds);
-      outValues[i] = new double[numMultiValues];
-      _dictionaryMap.get(column).readDoubleValues(_reusableMVDictIds, numMultiValues, outValues[i]);
+      if (nullValueVectorReader != null && nullValueVectorReader.isNull(inDocIds[i])) {
+        outValues[i] = new double[0];
+      } else {
+        blockMultiValIterator.skipTo(inDocIds[i]);
+        int numMultiValues = blockMultiValIterator.nextIntVal(_reusableMVDictIds);
+        outValues[i] = new double[numMultiValues];
+        _dictionaryMap.get(column).readDoubleValues(_reusableMVDictIds, numMultiValues, outValues[i]);
+      }
     }
   }
 
@@ -305,12 +334,17 @@ public class DataFetcher {
    * @param outValues Buffer for output
    */
   public void fetchStringValues(String column, int[] inDocIds, int length, String[][] outValues) {
+    NullValueVectorReader nullValueVectorReader = _nullValueVectorReaderMap.get(column);
     BlockMultiValIterator blockMultiValIterator = _blockMultiValIteratorMap.get(column);
     for (int i = 0; i < length; i++) {
-      blockMultiValIterator.skipTo(inDocIds[i]);
-      int numMultiValues = blockMultiValIterator.nextIntVal(_reusableMVDictIds);
-      outValues[i] = new String[numMultiValues];
-      _dictionaryMap.get(column).readStringValues(_reusableMVDictIds, numMultiValues, outValues[i]);
+      if (nullValueVectorReader != null && nullValueVectorReader.isNull(inDocIds[i])) {
+        outValues[i] = new String[0];
+      } else {
+        blockMultiValIterator.skipTo(inDocIds[i]);
+        int numMultiValues = blockMultiValIterator.nextIntVal(_reusableMVDictIds);
+        outValues[i] = new String[numMultiValues];
+        _dictionaryMap.get(column).readStringValues(_reusableMVDictIds, numMultiValues, outValues[i]);
+      }
     }
   }
 
@@ -323,10 +357,15 @@ public class DataFetcher {
    * @param outNumValues Buffer for output
    */
   public void fetchNumValues(String column, int[] inDocIds, int length, int[] outNumValues) {
+    NullValueVectorReader nullValueVectorReader = _nullValueVectorReaderMap.get(column);
     BlockMultiValIterator blockMultiValIterator = _blockMultiValIteratorMap.get(column);
     for (int i = 0; i < length; i++) {
-      blockMultiValIterator.skipTo(inDocIds[i]);
-      outNumValues[i] = blockMultiValIterator.nextIntVal(_reusableMVDictIds);
+      if (nullValueVectorReader != null && nullValueVectorReader.isNull(inDocIds[i])) {
+        outNumValues[i] = 0;
+      } else {
+        blockMultiValIterator.skipTo(inDocIds[i]);
+        outNumValues[i] = blockMultiValIterator.nextIntVal(_reusableMVDictIds);
+      }
     }
   }
 }
